@@ -16,17 +16,36 @@ CNOS（CN OS）是基于 **64 位微内核** 的实验性操作系统，通过 *
 |------|------|
 | CMake ≥ 3.16 | 构建 |
 | NASM | 内核汇编（`elf64`） |
-| `x86_64-elf-gcc` + binutils | 裸机交叉编译（无 libc） |
+| `x86_64-elf-gcc` + `x86_64-elf-ld` 等 | 裸机交叉编译（无 libc） |
 | xorriso、`grub-mkrescue` | 生成 `cnos.iso`（可选；无则只生成 `kernel.elf`） |
 | QEMU `qemu-system-x86_64` | 本地运行 ISO |
 
-**Fedora**：若仓库无 `x86_64-elf-gcc`，需自装交叉工具链（常见路径 `~/opt/cross/bin`），或设置环境变量 `CNOS_X86_64_ELF_GCC` 指向编译器。
+### 交叉工具链（多数 apt 源无预装包，需自行编译）
 
-**Ubuntu / Debian** 示例：
+CNOS 需要 **目标三元组 `x86_64-elf`** 的裸机工具链（不是 `x86_64-linux-gnu`）。很多环境 **apt/dnf 里没有** 现成 `gcc-x86-64-elf`，需要 **从 GNU 源码编译 binutils + gcc**（或只用可信来源的预编译包）。
+
+**与 CI 同源的一键脚本**（版本固定在脚本内：binutils / gcc 可从 GNU 镜像拉取）：
 
 ```bash
-sudo apt install cmake nasm gcc-x86-64-elf binutils-x86-64-elf xorriso grub-common grub-pc-bin qemu-system-x86
+# 主机需已安装：gcc、g++、make、bison、flex、curl、xz 等（见脚本注释）
+sudo apt install build-essential bison flex texinfo curl xz-utils   # Debian/Ubuntu 示例
+
+bash scripts/build-x86_64-elf-toolchain.sh "$HOME/opt/cross"
+export PATH="$HOME/opt/cross/bin:$PATH"
 ```
+
+若安装到仓库下的 `.cross`（与 GitHub Actions 默认一致）：
+
+```bash
+bash scripts/build-x86_64-elf-toolchain.sh "$(pwd)/.cross"
+export PATH="$(pwd)/.cross/bin:$PATH"
+```
+
+更通用的手写步骤见 [OSDev Wiki: GCC Cross-Compiler](https://wiki.osdev.org/GCC_Cross-Compiler)。
+
+CMake 通过 `PATH` 查找 `x86_64-elf-gcc`，也可用 `CNOS_X86_64_ELF_GCC` 指向编译器可执行文件（见 `cmake/x86_64-elf.cmake`）。
+
+**不要**用 `x86_64-linux-gnu-gcc` 代替；若个别发行版 **恰好** 提供 `gcc-x86-64-elf` 包，也可直接 `apt install` 后使用，与脚本二选一即可。
 
 ## 构建
 
@@ -90,14 +109,19 @@ make run
 | `kernel/fs/lib/ext2fs/` 等 | e2fsprogs 库源码（按需加入 CMake） |
 | `cmake/x86_64-elf.cmake` | 裸机工具链 |
 | `iso/boot/grub/grub.cfg` | GRUB 菜单（`multiboot2` 加载内核） |
+| `scripts/build-x86_64-elf-toolchain.sh` | 从源码构建 `x86_64-elf` 交叉链（与 Actions 一致） |
 | `.github/workflows/` | CI 与 Release（推送 `v*` tag 发布 ISO） |
 
 更细的 **kernel/fs** 说明见 `kernel/fs/README`。
 
 ## 自动化（GitHub Actions）
 
-- **CI**：推送/PR 至 `main` 时编译 `kernel.elf` 与 `cnos.iso`，并上传 Artifact。  
-- **Release**：推送 `v*` 标签（如 `v0.1.0`）时构建并发布 `cnos-<tag>.iso` 与 `kernel-<tag>.elf`。
+- **不依赖** apt 里的 `gcc-x86-64-elf`：在 Runner 上执行 `scripts/build-x86_64-elf-toolchain.sh`，从 **GNU 官方源码** 编译 **binutils + gcc**（`x86_64-elf`），安装到 `${GITHUB_WORKSPACE}/.cross`。  
+- **`actions/cache`** 缓存 `.cross` 目录；**首次运行**耗时会较长（完整编译工具链），**缓存命中**后只编译内核/ISO。  
+- **CI**：推送/PR 至 `main` 时生成 `kernel.elf`、`cnos.iso`，并上传 Artifact。  
+- **Release**：推送 `v*` 标签时同样先确保工具链，再发布 `cnos-<tag>.iso` 与 `kernel-<tag>.elf`。
+
+自建 Runner 时：保证已安装脚本所需 **宿主编译依赖**（`build-essential`、`bison`、`flex`、`texinfo`、`curl`、`xz-utils` 等），与 Ubuntu 工作流一致即可。
 
 ## 语言与界面
 

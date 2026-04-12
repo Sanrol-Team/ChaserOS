@@ -1,5 +1,3 @@
-# CNOS：交叉编译内核与 ISO（需 nasm + x86_64-elf-gcc + xorriso/grub）
-
 name: CI
 
 on:
@@ -20,20 +18,37 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install toolchain and GRUB (ISO)
+      - name: Install host build deps
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            cmake \
-            make \
-            nasm \
-            gcc-x86-64-elf \
-            binutils-x86-64-elf \
-            xorriso \
-            grub-common \
-            grub-pc-bin
+            build-essential bison flex texinfo curl xz-utils cmake make nasm \
+            xorriso grub-common grub-pc-bin libgmp-dev libmpfr-dev libmpc-dev
 
-      - name: Configure (CMake + x86_64-elf toolchain)
+      - name: Cache x86_64-elf toolchain
+        uses: actions/cache@v4
+        id: cache-cross
+        with:
+          path: .cross
+          # 建议增加版本号在 key 里，方便手动强制刷新缓存
+          key: toolchain-${{ runner.os }}-bu2.42-gcc14.2-${{ hashFiles('scripts/build-x86_64-elf-toolchain.sh') }}
+
+      - name: Build x86_64-elf toolchain
+        # 只有在缓存没命中时才执行编译
+        if: steps.cache-cross.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p .cross
+          bash scripts/build-x86_64-elf-toolchain.sh "${GITHUB_WORKSPACE}/.cross"
+
+      - name: Add toolchain to PATH
+        run: echo "${GITHUB_WORKSPACE}/.cross/bin" >> "$GITHUB_PATH"
+
+      - name: Verify Toolchain
+        run: |
+          x86_64-elf-gcc --version
+          x86_64-elf-ld --version
+
+      - name: Configure (CMake)
         run: cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/x86_64-elf.cmake
 
       - name: Build kernel.elf
