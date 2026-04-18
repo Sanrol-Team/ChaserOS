@@ -116,9 +116,21 @@ void vmm_grant_user_2mb_region(uint64_t virt) {
     uint64_t *pd = (uint64_t *)(pdpte & ~0xFFFULL);
     uint64_t idx = PD_INDEX(virt);
     if (pd[idx] & PAGE_PRESENT) {
-        pd[idx] |= PAGE_USER;
+        /*
+         * 引导页表里大页常为 R/W+P；在 EFER.NXE=1 时若 PD 条目高位曾被置位，
+         * 可能表现为「不可执行」。用户代码与栈在用户态必须可访问：清 NX、置 U/S。
+         */
+        uint64_t ent = pd[idx];
+        ent &= ~PAGE_NX;
+        ent |= PAGE_USER | PAGE_WRITE;
+        pd[idx] = ent;
         __asm__ volatile("invlpg (%0)" :: "r"(virt) : "memory");
     }
+}
+
+void vmm_flush_tlb_all(void) {
+    uint64_t cr3 = vmm_get_current_pml4();
+    __asm__ volatile("mov %0, %%cr3" :: "r"(cr3) : "memory");
 }
 
 /* 获取或创建一个下一级页表 */

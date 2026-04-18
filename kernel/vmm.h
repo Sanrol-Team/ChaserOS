@@ -34,6 +34,9 @@ uint64_t vmm_create_address_space();
  */
 void vmm_grant_user_2mb_region(uint64_t virt);
 
+/** 重载 CR3 以 flush 全 TLB（用户页表位次更新后建议调用） */
+void vmm_flush_tlb_all(void);
+
 /**
  * [addr, addr+len) 是否在 **当前** 页表中均为用户可读页（PAGE_PRESENT | PAGE_USER）。
  * len==0 时视作合法（不产生访问）。

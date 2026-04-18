@@ -8,4 +8,5 @@ const EBADF   = 9
 const EMFILE  = 24
 const EINVAL  = 22
 const EFAULT  = 14
+const EAGAIN  = 11
 const ENOSYS  = 38

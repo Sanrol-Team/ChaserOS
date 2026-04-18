@@ -12,10 +12,10 @@
 #include "vmm.h"
 #include "clock.h"
 #include "user_fd.h"
+#include "ipc.h"
 
 volatile uint64_t cnos_kernel_ticks = 0;
 
-/* 键盘扫描码表 (简化版) */
 static const char scancode_ascii[] = {
     0, 27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\b',
     '\t', 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\n',
@@ -23,7 +23,6 @@ static const char scancode_ascii[] = {
     'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', 0, '*', 0, ' '
 };
 
-/* 外部函数声明 */
 extern void puts(const char *s);
 extern void puts_hex(uint64_t n);
 extern void putchar(char c);
@@ -32,10 +31,24 @@ static void syscall_ret(struct registers *regs, int64_t value) {
     regs->rax = (uint64_t)value;
 }
 
-/* 中断处理主程序 */
+static void user_copy_message_in(uint64_t user_va, message_t *out) {
+    uint8_t *p = (uint8_t *)user_va;
+    uint8_t *dst = (uint8_t *)out;
+    for (size_t i = 0; i < sizeof(message_t); i++) {
+        dst[i] = p[i];
+    }
+}
+
+static void user_copy_message_out(const message_t *in, uint64_t user_va) {
+    const uint8_t *src = (const uint8_t *)in;
+    uint8_t *p = (uint8_t *)user_va;
+    for (size_t i = 0; i < sizeof(message_t); i++) {
+        p[i] = src[i];
+    }
+}
+
 void isr_handler(struct registers *regs) {
     if (regs->int_no < 32) {
-        /* 处理异常 */
         puts("\n!!! CPU EXCEPTION !!!\n");
         puts("Exception Number: ");
         char hex[] = "0123456789ABCDEF";
@@ -47,19 +60,23 @@ void isr_handler(struct registers *regs) {
         puts_hex(regs->rip);
         puts("\nCS: ");
         puts_hex(regs->cs);
+        if (regs->int_no == 14u) {
+            uint64_t cr2;
+            __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
+            puts("\nCR2 (fault VA): ");
+            puts_hex(cr2);
+        }
         puts("\nStopping system...\n");
-        
+
         while (1) {
             __asm__ volatile("hlt");
         }
     } else if (regs->int_no >= 32 && regs->int_no <= 47) {
-        /* 处理 IRQ */
-        if (regs->int_no == 32) { /* IRQ 0: 时钟 */
+        if (regs->int_no == 32) {
             cnos_kernel_ticks++;
             schedule();
-        } else if (regs->int_no == 33) { /* IRQ 1: 键盘 */
+        } else if (regs->int_no == 33) {
             uint8_t scancode = inb(0x60);
-            /* 只处理按下 (按下 < 0x80) */
             if (scancode < 0x80) {
                 if (scancode < sizeof(scancode_ascii)) {
                     char c = scancode_ascii[scancode];
@@ -68,17 +85,15 @@ void isr_handler(struct registers *regs) {
                     }
                 }
             }
-        } else if (regs->int_no == 44) { /* IRQ 12: PS/2 鼠标（无 GUI 时排空数据） */
+        } else if (regs->int_no == 44) {
             (void)inb(0x60);
         }
 
-        /* 发送 EOI (End of Interrupt) */
         if (regs->int_no >= 40) {
-            outb(0xA0, 0x20); /* 发送到从片 */
+            outb(0xA0, 0x20);
         }
-        outb(0x20, 0x20);     /* 发送到主片 */
+        outb(0x20, 0x20);
     } else if (regs->int_no == 128) {
-        /* int $0x80：仅 ring 3 视为合法用户系统调用；否则拒绝并返回 -EPERM */
         if ((regs->cs & 3u) != 3u) {
             puts("\n[System call from kernel CPL0/CPL1/CPL2 — denied]\n");
             syscall_ret(regs, -EPERM);
@@ -168,6 +183,77 @@ void isr_handler(struct registers *regs) {
         case CNOS_SYS_CLOSE:
             syscall_ret(regs, user_fd_sys_close((int)regs->rdi));
             break;
+
+        case CNOS_SYS_IPC_SEND: {
+            uint64_t dest_pid = regs->rdi;
+            uint64_t msg_uva = regs->rsi;
+            if (!vmm_user_range_readable(msg_uva, sizeof(message_t))) {
+                syscall_ret(regs, -EFAULT);
+                break;
+            }
+            message_t m;
+            user_copy_message_in(msg_uva, &m);
+            int r = ipc_send(dest_pid, &m);
+            syscall_ret(regs, r == IPC_OK ? 0 : -EINVAL);
+            break;
+        }
+
+        case CNOS_SYS_IPC_RECV: {
+            uint64_t src_pid = regs->rdi;
+            uint64_t msg_uva = regs->rsi;
+            if (!vmm_user_range_writable(msg_uva, sizeof(message_t))) {
+                syscall_ret(regs, -EFAULT);
+                break;
+            }
+            message_t m;
+            int r = ipc_receive(src_pid, &m);
+            if (r == IPC_OK) {
+                user_copy_message_out(&m, msg_uva);
+                syscall_ret(regs, 0);
+            } else if (r == IPC_WOULD_BLOCK) {
+                syscall_ret(regs, -EAGAIN);
+            } else {
+                syscall_ret(regs, -EINVAL);
+            }
+            break;
+        }
+
+        case CNOS_SYS_IPC_REPLY: {
+            uint64_t dest_pid = regs->rdi;
+            uint64_t msg_uva = regs->rsi;
+            if (!vmm_user_range_readable(msg_uva, sizeof(message_t))) {
+                syscall_ret(regs, -EFAULT);
+                break;
+            }
+            message_t m;
+            user_copy_message_in(msg_uva, &m);
+            int r = ipc_reply(dest_pid, &m);
+            syscall_ret(regs, r == IPC_OK ? 0 : -EINVAL);
+            break;
+        }
+
+        case CNOS_SYS_IPC_CALL: {
+            uint64_t dest_pid = regs->rdi;
+            uint64_t req_u = regs->rsi;
+            uint64_t rep_u = regs->rdx;
+            if (!vmm_user_range_readable(req_u, sizeof(message_t)) ||
+                !vmm_user_range_writable(rep_u, sizeof(message_t))) {
+                syscall_ret(regs, -EFAULT);
+                break;
+            }
+            message_t req, rep;
+            user_copy_message_in(req_u, &req);
+            if (ipc_send(dest_pid, &req) != IPC_OK) {
+                syscall_ret(regs, -EINVAL);
+                break;
+            }
+            proc_t *cur = process_current_task_for_ipc();
+            ipc_wait_until_pending((struct proc *)cur);
+            ipc_consume_pending_message((struct proc *)cur, &rep);
+            user_copy_message_out(&rep, rep_u);
+            syscall_ret(regs, 0);
+            break;
+        }
 
         default:
             syscall_ret(regs, -ENOSYS);

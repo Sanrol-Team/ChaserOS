@@ -17,9 +17,18 @@ Slime CNOS STD（用户态标准库占位）
 
    （**SLIME_PATH** 支持用 **`:`** 或 **`;`** 分隔多段；每段 trim 后参与搜索。）
 
+   若 **slimec** 不在 **PATH** 中，可指向 Slime 源码 release 产物，例如：
+
+     export SLIMEC="/绝对路径/Slime-main/target/release/slimec"
+
+   **scripts/cnos-slime-compile.sh** 会优先使用 **SLIMEC**。
+
 3. 在应用程序开头：
 
+     import "cnos/runtime"
      import "cnos/io"
+
+   最小参考示例：**user/cnos-first.sm**（第一层基础设施演示）。
 
 与用户态示例并行开发 CNOS Slime STD
 ------------------------------------
@@ -55,5 +64,7 @@ Slime CNOS STD（用户态标准库占位）
   * **cnos/syscall.sm** — **cnos_syscall_errno** / **cnos_syscall_ok**（通用返回值解析）。
   * **cnos/io.sm** — **cnos_write** / **cnos_exit** 等。
   * **cnos/fd.sm** — **FD_STDIN** / **FD_STDOUT** / **FD_STDERR**。
+  * **cnos/runtime.sm** — **O_RDONLY**、**cnos_init**、**cnos_abort**（第一层用户态基础设施）。
+  * **cnos/ipc.sm** — 高层：**cnos_ipc_ping_call** / **cnos_ipc_call_hybrid** / **cnos_ipc_ping_hybrid_scratch** / **cnos_ipc_ping_pong_ok**；底层桩与 **cnos_msg_*** 缓冲辅助见 **user/cnos-rt/cnos_syscalls.asm**（阶段 4）。
 
 说明：内置 **`print`** 已由 slimec **cnos** 目标直接生成 **`int 0x80`**；STD 用于 **缓冲区写入**（**cnos_write**）等与 **extern** 链接的场景。

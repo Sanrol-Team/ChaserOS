@@ -1,5 +1,6 @@
 /* user/hello.c - 独立 ELF，由内核以嵌入二进制装入 0x400000 */
 
+#include <stdint.h>
 #include "cnos_user.h"
 
 static void write_cstr(int fd, const char *s)
@@ -49,6 +50,24 @@ void _start(void)
     write_cstr(1, " uptime_ticks=");
     write_u64_dec(1, (unsigned long long)cnos_syscall_uptime_ticks());
     write_cstr(1, "\n");
+
+    /* 阶段 3：IPC_CALL 一次 ping/pong（PID=3 服务） */
+    {
+        cnos_message_t req;
+        cnos_message_t rep;
+        req.sender = 0;
+        req.type = CNOS_MSG_PING;
+        for (size_t i = 0; i < CNOS_MAX_MSG_PAYLOAD; i++) {
+            req.payload[i] = 0;
+        }
+        req.payload[0] = (uint8_t)'x';
+        long cr = cnos_syscall_ipc_call(CNOS_HYBRID_SERVICE_PID, &req, &rep);
+        write_cstr(1, "ipc_call(ping)=");
+        write_s64_dec(1, cr);
+        write_cstr(1, " pong_type=");
+        write_u64_dec(1, (unsigned long long)rep.type);
+        write_cstr(1, "\n");
+    }
 
     long n = cnos_syscall_read(0, scratch, sizeof(scratch));
     write_cstr(1, "read(stdin) returned ");

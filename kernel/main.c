@@ -14,6 +14,7 @@
 #include "drivers/ide.h"
 #include "fs/cnos/cnos_ext2_vol.h"
 #include "gdt.h"
+#include "hybrid_ipc.h"
 
 void putchar(char c) {
     serial_putchar(c);
@@ -53,12 +54,6 @@ void puts_dec(uint64_t n) {
     }
 }
 
-static void test_task(void) {
-    for (;;) {
-        __asm__ volatile("hlt");
-    }
-}
-
 void kernel_main(uint64_t mbi_phys, uint64_t boot_magic) {
     serial_init();
 
@@ -85,9 +80,11 @@ void kernel_main(uint64_t mbi_phys, uint64_t boot_magic) {
     idt_init();
     shell_init();
 
-    process_create(test_task);
+    cnos_hybrid_ipc_service_spawn();
 
-    puts("Welcome to CNOS 64-bit Microkernel (serial + VGA text or framebuffer shell).\n");
+    puts("Welcome to CNOS hybrid kernel (IPC FS service PID=");
+    puts_dec(CNOS_HYBRID_SERVICE_PID);
+    puts(", serial + VGA shell).\n");
     puts("Memory OK. VFS init done.\n\nMultiboot2 @ ");
     puts_hex(mbi_phys);
     puts("\nPhysical: ");

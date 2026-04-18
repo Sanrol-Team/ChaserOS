@@ -1,10 +1,14 @@
-/* kernel/user_fd.c — 用户态 open/close 与 fd≥3 的 read（VFS ext2 根目录） */
+/* kernel/user_fd.c — 用户态 open/close/read；阶段 3 可选经 IPC 服务委派 */
 
 #include "user_fd.h"
 #include "fs/vfs.h"
 #include "errno.h"
 #include "syscall_abi.h"
 #include "vmm.h"
+#ifdef CNOS_HYBRID_FS_VIA_IPC
+#include "hybrid_ipc.h"
+#endif
+
 #include <stdint.h>
 
 #define CNOS_USER_FD_MIN 3
@@ -45,15 +49,10 @@ static long copy_user_path(char *dst, size_t dst_sz, uint64_t ua) {
     return -EINVAL;
 }
 
-long user_fd_sys_open(uint64_t path_ptr, int flags) {
+long user_fd_open_kpath(const char *path, int flags) {
     (void)flags;
     if (!vfs_is_mounted()) {
         return -EINVAL;
-    }
-    char path[128];
-    long ce = copy_user_path(path, sizeof(path), path_ptr);
-    if (ce != 0) {
-        return ce;
     }
     vfs_stat_t st;
     int vs = vfs_stat(path, &st);
@@ -89,6 +88,24 @@ long user_fd_sys_open(uint64_t path_ptr, int flags) {
         g_ufd[idx].size = (uint32_t)st.size;
     }
     return (long)(CNOS_USER_FD_MIN + idx);
+}
+
+long user_fd_sys_open(uint64_t path_ptr, int flags) {
+    char path[128];
+
+    if (!vfs_is_mounted()) {
+        return -EINVAL;
+    }
+    long ce = copy_user_path(path, sizeof(path), path_ptr);
+    if (ce != 0) {
+        return ce;
+    }
+
+#ifdef CNOS_HYBRID_FS_VIA_IPC
+    return hybrid_user_fd_open_via_ipc(path, flags);
+#else
+    return user_fd_open_kpath(path, flags);
+#endif
 }
 
 long user_fd_sys_close(int fd) {

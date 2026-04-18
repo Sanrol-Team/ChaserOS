@@ -1,0 +1,99 @@
+// cnos/ipc — 混合内核 IPC 高层封装（依赖 user/cnos-rt/cnos_syscalls.asm 内辅助符号）
+//
+// 消息缓冲须为至少 CNOS_MSG_SIZE（64）字节、可按 8 字节对齐的用户缓冲区；
+// 初始化/解析可借助 cnos_msg_* 辅助函数（汇编）或自行按 CNOS_MSG_OFF_* 写入。
+//
+import "cnos/constants"
+import "cnos/errno"
+import "cnos/syscall"
+
+extern "C" fn cnos_sys_ipc_send(dest_pid: int, msg: int) -> int
+extern "C" fn cnos_sys_ipc_recv(src_pid: int, msg: int) -> int
+extern "C" fn cnos_sys_ipc_reply(dest_pid: int, msg: int) -> int
+extern "C" fn cnos_sys_ipc_call(dest_pid: int, req: int, rep: int) -> int
+
+// 清零整条消息（64 字节）
+extern "C" fn cnos_msg_clear(msg: int)
+
+// 写入 type，sender 置 0，payload 清零
+extern "C" fn cnos_msg_set_type(msg: int, typ: int)
+
+// 构造 PING（type=MSG_PING，payload 全 0）
+extern "C" fn cnos_msg_ping_init(msg: int)
+
+// 读取 message_t.type（低 64 位；演示用 int）
+extern "C" fn cnos_msg_get_type(msg: int) -> int
+
+// 读取 payload 前 8 字节（小端 int64；FS_REPLY 时可为 fd）
+extern "C" fn cnos_msg_payload_get_i64(msg: int) -> int
+
+// user/cnos-rt/cnos_syscalls.asm 内单线程 scratch 缓冲地址（各 64 字节）
+extern "C" fn cnos_ipc_buf_req_addr() -> int
+extern "C" fn cnos_ipc_buf_rep_addr() -> int
+
+/* ---------- 底层 syscall 包装（返回值：0 成功；recv 暂无消息为 -EAGAIN） ---------- */
+
+fn cnos_ipc_send_msg(dest_pid: int, msg: int) -> int {
+    return cnos_sys_ipc_send(dest_pid, msg)
+}
+
+fn cnos_ipc_recv_msg(src_pid: int, msg: int) -> int {
+    return cnos_sys_ipc_recv(src_pid, msg)
+}
+
+fn cnos_ipc_reply_msg(dest_pid: int, msg: int) -> int {
+    return cnos_sys_ipc_reply(dest_pid, msg)
+}
+
+fn cnos_ipc_call_rpc(dest_pid: int, req: int, rep: int) -> int {
+    return cnos_sys_ipc_call(dest_pid, req, rep)
+}
+
+/* ---------- 语义化封装 ---------- */
+
+fn cnos_ipc_call_hybrid(req: int, rep: int) -> int {
+    return cnos_ipc_call_rpc(HYBRID_SERVICE_PID, req, rep)
+}
+
+// 填充 PING 并对默认混合服务做一次 IPC_CALL；rep 须为独立缓冲区。
+fn cnos_ipc_ping_call(req: int, rep: int) -> int {
+    cnos_msg_ping_init(req)
+    cnos_msg_clear(rep)
+    return cnos_ipc_call_hybrid(req, rep)
+}
+
+fn cnos_ipc_rpc_ok(ret: int) -> int {
+    return cnos_syscall_ok(ret)
+}
+
+fn cnos_ipc_rpc_errno(ret: int) -> int {
+    return cnos_syscall_errno(ret)
+}
+
+fn cnos_ipc_recv_is_eagain(ret: int) -> int {
+    if cnos_syscall_ok(ret) != 0 {
+        return 0
+    }
+    if cnos_ipc_rpc_errno(ret) == EAGAIN {
+        return 1
+    }
+    return 0
+}
+
+// IPC_CALL 成功且回复 type 为 MSG_PONG 时返回 1
+fn cnos_ipc_ping_pong_ok(ret: int, rep: int) -> int {
+    if cnos_ipc_rpc_ok(ret) == 0 {
+        return 0
+    }
+    if cnos_msg_get_type(rep) != MSG_PONG {
+        return 0
+    }
+    return 1
+}
+
+// 使用运行时内建 scratch 缓冲的一次 PING/CALL（单线程演示；勿并发）
+fn cnos_ipc_ping_hybrid_scratch() -> int {
+    let req = cnos_ipc_buf_req_addr()
+    let rep = cnos_ipc_buf_rep_addr()
+    return cnos_ipc_ping_call(req, rep)
+}

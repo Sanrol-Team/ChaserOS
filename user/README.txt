@@ -24,8 +24,8 @@ CNOS 用户态骨架（完整）
       minimal.c            最小 C 示例（可复制改名）
 
     hello.c              C 演示（内核 CMake 亦可嵌入）
-    hello.sm / hello-std.sm / slime-demo.sm / syscall-errno-demo.sm
-                         Slime 演示（需 SLIME_PATH 指向 integrations/slime-for-cnos/std）
+    hello.sm / hello-std.sm / slime-demo.sm / syscall-errno-demo.sm / cnos-first.sm / ipc-hl-demo.sm
+                         Slime 演示（需 SLIME_PATH 指向 integrations/slime-for-cnos/std）；**cnos-first.sm** 展示 runtime + io 基础设施形态
 
 三条编译路径
 ------------

@@ -11,5 +11,6 @@
 #define EINVAL  22
 #define EFAULT  14
 #define ENOSYS  38
+#define EAGAIN  11
 
 #endif

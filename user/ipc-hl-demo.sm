@@ -1,0 +1,14 @@
+// 阶段 4：Slime IPC 高层（cnos/ipc）+ 内置 scratch 缓冲演示
+// source scripts/cnos-slime-dev-env.sh
+// bash scripts/cnos-slime-compile.sh user/ipc-hl-demo.sm /tmp/ipc-hl-demo.elf
+
+import "cnos/ipc"
+
+fn main {
+    let ret = cnos_ipc_ping_hybrid_scratch()
+    if cnos_ipc_ping_pong_ok(ret, cnos_ipc_buf_rep_addr()) != 0 {
+        print "ipc-hl: PONG ok\n"
+    } else {
+        print "ipc-hl: call failed\n"
+    }
+}

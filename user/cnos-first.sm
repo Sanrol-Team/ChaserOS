@@ -1,0 +1,12 @@
+// Slime CNOS「第一个用户态基础设施」示例：cnos/runtime + cnos/io；输出走内置 print（SYS_WRITE）。
+//
+import "cnos/runtime"
+import "cnos/io"
+
+fn main {
+    if cnos_init() != 0 {
+        cnos_abort(1)
+    }
+    print "cnos-first: runtime + io OK\n"
+    cnos_exit(0)
+}

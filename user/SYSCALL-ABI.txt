@@ -126,6 +126,8 @@ Slime 常量模块：**integrations/slime-for-cnos/std/cnos/constants.sm**
 
     **返回值**：**RAX** = **fd**（≥ **3**）；**-EINVAL**（VFS 未挂载等）、**-ENOENT**、**-EMFILE**、**-EFAULT**。
 
+    **混合阶段 3**：默认构建下打开请求经 **IPC** 委派至内核 **PID=3** 服务再调用 **`user_fd_open_kpath`**（与直接 VFS 调用结果一致，便于迁出文件服务）。
+
   ----
   **CNOS_SYS_CLOSE（6）**
 
@@ -134,6 +136,16 @@ Slime 常量模块：**integrations/slime-for-cnos/std/cnos/constants.sm**
     **参数**：**RDI** = fd。
 
     **返回值**：**RAX** = **0**；**-EBADF**。
+
+  ----
+  **混合内核 IPC（7–10）**
+
+  * **CNOS_SYS_IPC_SEND（7）**：**RDI** = 目标 PID；**RSI** = **`message_t`** 用户 VA；成功 **RAX=0**；失败 **-EINVAL** / **-EFAULT**。
+  * **CNOS_SYS_IPC_RECV（8）**：**RDI** = 期望发送方 PID（**0** = 任意）；**RSI** = 输出 **`message_t`**；暂无消息 **-EAGAIN**（**11**）。
+  * **CNOS_SYS_IPC_REPLY（9）**：**RDI** = **WAITING_REPLY** 的对端 PID；**RSI** = **`message_t`**。
+  * **CNOS_SYS_IPC_CALL（10）**：**RDI** = 目标 PID；**RSI** = 请求 **`message_t`**；**RDX** = 响应 **`message_t`** 输出缓冲区。内核 **Send** 后阻塞直至收到 **Reply**（**sti/hlt**），再写入响应；成功 **RAX=0**。
+
+  **阶段 3**：若内核以 **CNOS_HYBRID_FS_VIA_IPC** 构建，**SYS_OPEN** 在用户路径上通过 **PID=3** 服务执行 **`user_fd_open_kpath`**（仍链接同一 VFS；便于后续将服务迁出 ring0）。
 
 --------------------------------------------------------------------
 4. 参考映射（便于对照）

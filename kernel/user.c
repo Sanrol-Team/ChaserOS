@@ -5,8 +5,19 @@
 #include "elf_load.h"
 #include "pmm.h"
 #include "vmm.h"
+#include "process.h"
+
 #include <stddef.h>
 #include <stdint.h>
+
+#define USER_TEXT_BASE   0x400000ULL
+#define USER_STACK_TOP   0x801000ULL
+
+static void grant_user_regions(void) {
+    vmm_grant_user_2mb_region(USER_TEXT_BASE);
+    vmm_grant_user_2mb_region(USER_STACK_TOP - 4096ULL);
+    vmm_flush_tlb_all();
+}
 
 extern void puts(const char *s);
 
@@ -19,9 +30,6 @@ extern char _binary_hello_bin_end[];
 extern char _binary_hello_sm_bin_start[];
 extern char _binary_hello_sm_bin_end[];
 #endif
-
-#define USER_TEXT_BASE   0x400000ULL
-#define USER_STACK_TOP   0x801000ULL
 
 static void user_jump_to_ring3(uint64_t rip, uint64_t rsp) {
     __asm__ volatile(
@@ -59,8 +67,7 @@ static void user_run_embedded_elf(const uint8_t *blob_start, const uint8_t *blob
     size_t sz = (size_t)(blob_end - blob_start);
     uint64_t entry = 0;
 
-    vmm_grant_user_2mb_region(USER_TEXT_BASE);
-    vmm_grant_user_2mb_region(USER_STACK_TOP - 4096ULL);
+    grant_user_regions();
 
     if (elf_load_flat(blob_start, sz, &entry) != 0) {
         puts("user: embedded ELF load failed ("); puts(tag); puts(")\n");
@@ -68,6 +75,7 @@ static void user_run_embedded_elf(const uint8_t *blob_start, const uint8_t *blob
     }
 
     cnos_active_user_pid = 2;
+    process_bind_user_slot(cnos_active_user_pid);
     user_fd_reset();
     puts("[kernel] jumping to user ("); puts(tag); puts(", ring 3)...\n");
     user_jump_to_ring3(entry, USER_STACK_TOP);

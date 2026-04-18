@@ -1,0 +1,21 @@
+// cnos/runtime — Slime CNOS 用户态第一层基础设施（常量、初始化占位、退出语义）。
+// 建议应用侧：import "cnos/runtime" 与 import "cnos/io"；后续可在此集中线程局部、堆初始化等。
+//
+import "cnos/constants"
+import "cnos/fd"
+import "cnos/errno"
+import "cnos/syscall"
+import "cnos/io"
+
+// open(2) 标志：当前内核仅支持只读（与 SYS_OPEN 约定一致）。
+const O_RDONLY = 0
+
+// 进程级初始化占位（当前无堆）；返回 0 表示成功。
+fn cnos_init() -> int {
+    return 0
+}
+
+// 异常路径退出；语义同 cnos_exit，便于日后挂接栈展开或日志。
+fn cnos_abort(code: int) {
+    cnos_exit(code)
+}

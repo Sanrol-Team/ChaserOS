@@ -41,6 +41,7 @@ set(KERNEL_C
     kernel/drivers/ttfont.c
     kernel/shell.c
     kernel/ipc.c
+    kernel/hybrid_ipc.c
     kernel/fs/vfs.c
     kernel/fs/cnos/cnos_alloc.c
     kernel/fs/cnos/cnos_ext2.c
@@ -169,6 +170,8 @@ target_compile_options(kernel.elf PRIVATE
 if(CNOS_WITH_SLIME_USER)
     target_compile_definitions(kernel.elf PRIVATE CNOS_HAVE_SLIME_USER=1)
 endif()
+
+target_compile_definitions(kernel.elf PRIVATE CNOS_HYBRID_FS_VIA_IPC=1)
 
 target_link_options(kernel.elf PRIVATE
     -nostdlib
