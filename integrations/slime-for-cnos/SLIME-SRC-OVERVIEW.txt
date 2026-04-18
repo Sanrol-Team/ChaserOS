@@ -1,0 +1,37 @@
+Slime-main/src — 源码结构说明（供 CNOS / Slime 双向对齐）
+=========================================================
+
+本文描述 Slime 编译器源码树（典型路径：`Slime-main/src/`），对应 **Cargo** 二进制 **slimec**
+（见仓库根 **Cargo.toml**：`[[bin]] name = "slimec"`, `path = "src/main.rs"`）。
+
+产品定位（摘自上游）：**slime-lang → x86-64 NASM**，再由外部 **nasm + ld** 完成机器码与链接。
+
+----------------------------------------------------------------------
+main.rs（主体，体量最大）
+----------------------------------------------------------------------
+
+* **main**：读入源文件 → **tokenize** → **parse** → **模块/import** → **所有权检查**
+  → **Optimizer** → **CodeGen::emit** → 写出 `.asm`。
+* **Target** 枚举（节选）：**LinuxX64** / **WindowsX64** / **MacosX64** — 决定 NASM 语法细节与打印给用户的链接提示（GNU ld / golink / mach 等）。
+* **CodeGen**：将 AST 降为 NASM 文本（含函数、表达式、控制流、外调等）。
+* 大规模辅助类型与 passes 亦在同文件内（单文件聚合实现）。
+
+后续 **Slime For CNOS** 的首选落点：
+
+* 增加 **Target::Cnos**（或等价名称），或在现有 **LinuxX64** 与 CNOS **freestanding ELF** 之间建立清晰边界；
+* **emit** 路径保证与 **GCC For CNOS** / **user.ld** 生成的 ELF64 约定一致。
+
+----------------------------------------------------------------------
+独立模块（与 main.rs `mod ...` 对应）
+----------------------------------------------------------------------
+
+* **ctfe.rs** — 编译期求值引擎（**CtfeEngine**）。
+* **ctfe_extended.rs** — CTFE 扩展能力。
+* **dynamic_precomp.rs** — 动态预计算相关。
+* **tce.rs** — **TceEngine**（类型/约束相关优化一侧，以源码为准）。
+* **ifm.rs** — **IfmEngine**。
+* **dope.rs** — **DopeEngine**。
+* **scheduler_elimination.rs** — **SchedulerEliminationEngine**。
+* **pre_concurrency.rs** — **PreConcurrencyEngine**。
+
+具体算法边界以 Slime 仓库内注释与调用关系为准；CNOS 侧仅需记住：**优化与后端在 slimec 内闭环，CNOS 主攻「最后一公里的目标与链接」**。

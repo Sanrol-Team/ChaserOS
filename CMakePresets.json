@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "cmakeMinimumRequired": {
     "major": 3,
     "minor": 20,
@@ -12,12 +12,35 @@
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/build",
       "toolchainFile": "${sourceDir}/cmake/x86_64-elf.cmake"
+    },
+    {
+      "name": "anaf",
+      "displayName": "ANAF x86_64-elf (同 default，工具链 env 名 ANAF_*)",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-anaf",
+      "toolchainFile": "${sourceDir}/cmake/anaf.cmake"
+    },
+    {
+      "name": "slime",
+      "inherits": "default",
+      "displayName": "嵌入 Slime 用户 ELF（需 slimec + --target cnos）",
+      "cacheVariables": {
+        "CNOS_WITH_SLIME_USER": "ON"
+      }
     }
   ],
   "buildPresets": [
     {
       "name": "default",
       "configurePreset": "default"
+    },
+    {
+      "name": "anaf",
+      "configurePreset": "anaf"
+    },
+    {
+      "name": "slime",
+      "configurePreset": "slime"
     }
   ]
 }

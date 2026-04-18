@@ -1,0 +1,5 @@
+// 文件描述符常量（POSIX 惯例；内核 SYS_WRITE 当前仅处理 fd == 1）
+
+const FD_STDIN  = 0
+const FD_STDOUT = 1
+const FD_STDERR = 2

@@ -2,11 +2,14 @@
 
 #include "shell.h"
 #include "pmm.h"
-#include "io.h"
 #include "drivers/vga.h"
 #include "drivers/pci.h"
 #include "drivers/ide.h"
 #include "fs/cnos/cnos_ext2_vol.h"
+#include "user.h"
+#include "power.h"
+#include "console.h"
+#include "sysinfo.h"
 #include <stdint.h>
 #include <stddef.h>
 
@@ -74,6 +77,33 @@ void shell_init() {
     cmd_len = 0;
 }
 
+void shell_handle_input(char c) {
+    if (c == '\n' || c == '\r') {
+        cmd_buffer[cmd_len] = '\0';
+        putchar('\n');
+        shell_execute(cmd_buffer);
+        cmd_len = 0;
+        cmd_buffer[0] = '\0';
+        puts("CNOS> ");
+        return;
+    }
+    if (c == '\b' || c == 127) {
+        if (cmd_len > 0) {
+            cmd_len--;
+            cmd_buffer[cmd_len] = '\0';
+            putchar('\b');
+            putchar(' ');
+            putchar('\b');
+        }
+        return;
+    }
+    if (cmd_len < MAX_COMMAND_LEN - 1 && c >= 32 && c < 127) {
+        cmd_buffer[cmd_len++] = c;
+        cmd_buffer[cmd_len] = '\0';
+        putchar(c);
+    }
+}
+
 void shell_execute(const char *cmd) {
     char buf[MAX_COMMAND_LEN];
     size_t i = 0;
@@ -102,20 +132,25 @@ void shell_execute(const char *cmd) {
         puts("  help              - This help\n");
         puts("  clear             - Clear screen\n");
         puts("  mem               - Memory stats\n");
-        puts("  reboot            - Reboot\n");
+        puts("  reboot            - Reboot (ACPI/ICH/8042)\n");
+        puts("  poweroff          - Soft power off (ACPI / QEMU, kernel I/O)\n");
+        puts("  shutdown          - Same as poweroff\n");
         puts("  mkdisk <sectors>  - RAM disk (512B sectors, even count, min 512)\n");
         puts("  vol               - Show current volume\n");
         puts("  format            - Create minimal ext2 on current volume\n");
         puts("  ls                - List root (ext2)\n");
         puts("  read <name>       - Read file from ext2 root\n");
-        puts("  write <n> <text>  - Write regular file under root\n");
+        puts("  write <name> <text> - Write regular file under ext2 root\n");
         puts("  ide               - IDENTIFY primary IDE master/slave\n");
         puts("  attach ide <0|1>  - Use IDE master/slave as volume\n");
         puts("  detach            - Release volume\n");
         puts("  lspci             - PCI devices\n");
         puts("  ps                - Fake process list\n");
+        puts("  hello             - Run embedded ring-3 user demo (C)\n");
+        puts("  slime             - Run embedded Slime user demo (requires CNOS_WITH_SLIME_USER)\n");
+        puts("  systeminfo        - OS / RAM / display / font / IDE / CD-ROM\n");
     } else if (strcmp(verb, "clear") == 0) {
-        vga_clear();
+        console_clear();
     } else if (strcmp(verb, "mem") == 0) {
         puts("Memory Statistics:\n");
         puts("  Total: ");
@@ -129,11 +164,10 @@ void shell_execute(const char *cmd) {
         puts(" MB\n");
     } else if (strcmp(verb, "reboot") == 0) {
         puts("Rebooting...\n");
-        uint8_t good = 0x02;
-        while (good & 0x02) {
-            good = inb(0x64);
-        }
-        outb(0x64, 0xFE);
+        power_reboot();
+    } else if (strcmp(verb, "poweroff") == 0 || strcmp(verb, "shutdown") == 0) {
+        puts("Powering off...\n");
+        power_shutdown();
     } else if (strcmp(verb, "mkdisk") == 0) {
         uint64_t sectors = 0;
         if (parse_u64(p, &sectors) != 0 || sectors < 512u || (sectors % 2u) != 0u) {
@@ -293,13 +327,15 @@ void shell_execute(const char *cmd) {
         puts("-----|-------|------\n");
         puts(" 0   | R     | Kernel\n");
         puts(" 1   | R     | Shell\n");
+    } else if (strcmp(verb, "hello") == 0) {
+        user_run_embedded_hello();
+    } else if (strcmp(verb, "slime") == 0) {
+        user_run_embedded_slime_hello();
+    } else if (strcmp(verb, "systeminfo") == 0) {
+        sysinfo_print();
     } else if (cmd[0] != '\0') {
         puts("Unknown command: ");
         puts(cmd);
         puts("\n");
     }
 }
-</think>
-
-<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>
-Read

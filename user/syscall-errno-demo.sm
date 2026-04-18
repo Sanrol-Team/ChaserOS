@@ -1,0 +1,17 @@
+// 演示：非法 fd → 内核返回 -EBADF；无需有效缓冲区（内核先校验 fd）。
+// source scripts/cnos-slime-dev-env.sh
+// bash scripts/cnos-slime-compile.sh user/syscall-errno-demo.sm /tmp/syscall-errno-demo.elf
+
+import "cnos/io"
+import "cnos/errno"
+import "cnos/syscall"
+
+fn main {
+    var bad = cnos_write(2, 0, 0)
+    if cnos_syscall_ok(bad) == 0 {
+        if cnos_syscall_errno(bad) == EBADF {
+            print "syscall errno: EBADF ok\n"
+        }
+    }
+    cnos_exit(0)
+}

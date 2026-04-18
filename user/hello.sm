@@ -1,0 +1,2 @@
+// CNAF 用户态示例（需 slimec --target cnos + nasm + x86_64-elf-ld）
+print "Hello from Slime on CNOS\n"

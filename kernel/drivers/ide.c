@@ -17,7 +17,8 @@
 #define ATA_REG_COMMAND    0x07u
 #define ATA_CMD_READ_PIO   0x20u
 #define ATA_CMD_WRITE_PIO  0x30u
-#define ATA_CMD_IDENTIFY   0xECu
+#define ATA_CMD_IDENTIFY         0xECu
+#define ATA_CMD_IDENTIFY_PACKET  0xA1u
 
 #define ATA_STS_ERR        0x01u
 #define ATA_STS_DRQ        0x08u
@@ -85,7 +86,7 @@ static int ide_select(uint8_t drive, uint32_t lba_hi4) {
     return 0;
 }
 
-static int ide_read_identify_words(uint8_t drive, uint16_t buf[256]) {
+static int ide_read_identify_words_cmd(uint8_t drive, uint16_t buf[256], uint8_t cmd) {
     ide_init();
     if (ide_select(drive, 0) != 0) {
         return -1;
@@ -94,7 +95,7 @@ static int ide_read_identify_words(uint8_t drive, uint16_t buf[256]) {
     outb(ide_base() + ATA_REG_LBA0, 0);
     outb(ide_base() + ATA_REG_LBA1, 0);
     outb(ide_base() + ATA_REG_LBA2, 0);
-    outb(ide_base() + ATA_REG_COMMAND, ATA_CMD_IDENTIFY);
+    outb(ide_base() + ATA_REG_COMMAND, cmd);
     ide_delay();
 
     uint8_t st = (uint8_t)ide_wait_not_busy();
@@ -115,12 +116,29 @@ static int ide_read_identify_words(uint8_t drive, uint16_t buf[256]) {
     return 0;
 }
 
+int ide_identify_packet(uint8_t drive, char model[40]) {
+    if (!model) {
+        return -1;
+    }
+    uint16_t buf[256];
+    if (ide_read_identify_words_cmd(drive, buf, ATA_CMD_IDENTIFY_PACKET) != 0) {
+        return -1;
+    }
+
+    for (int i = 0; i < 20; i++) {
+        uint16_t v = buf[27 + i];
+        model[i * 2] = (char)(v >> 8);
+        model[i * 2 + 1] = (char)(v & 0xFF);
+    }
+    return 0;
+}
+
 int ide_identify(uint8_t drive, char model[40]) {
     if (!model) {
         return -1;
     }
     uint16_t buf[256];
-    if (ide_read_identify_words(drive, buf) != 0) {
+    if (ide_read_identify_words_cmd(drive, buf, ATA_CMD_IDENTIFY) != 0) {
         return -1;
     }
 
@@ -133,12 +151,29 @@ int ide_identify(uint8_t drive, char model[40]) {
     return 0;
 }
 
+int ide_probe_type(uint8_t drive, char model[40], int *class_out) {
+    if (!model || !class_out) {
+        return -1;
+    }
+    if (ide_identify(drive, model) == 0) {
+        *class_out = IDE_CLASS_ATA;
+        return 0;
+    }
+    if (ide_identify_packet(drive, model) == 0) {
+        *class_out = IDE_CLASS_ATAPI;
+        return 0;
+    }
+    *class_out = IDE_CLASS_NONE;
+    model[0] = '\0';
+    return -1;
+}
+
 int ide_capacity_sectors(uint8_t drive, uint32_t *sectors_out) {
     if (!sectors_out) {
         return -1;
     }
     uint16_t buf[256];
-    if (ide_read_identify_words(drive, buf) != 0) {
+    if (ide_read_identify_words_cmd(drive, buf, ATA_CMD_IDENTIFY) != 0) {
         return -1;
     }
     *sectors_out = (uint32_t)buf[60] | ((uint32_t)buf[61] << 16);

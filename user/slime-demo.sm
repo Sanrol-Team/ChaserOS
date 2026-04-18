@@ -1,0 +1,10 @@
+// Slime 用户态演示：STD（cnos/io）+ 编译器内置 print（同样走 int $0x80 SYS_WRITE）
+// 编译：source scripts/cnos-slime-dev-env.sh && bash scripts/cnos-slime-compile.sh user/slime-demo.sm /tmp/slime-demo.elf
+
+import "cnos/io"
+import "cnos/fd"
+
+fn main {
+    print "Slime CNOS: cnos/io + cnos/fd ok\n"
+    cnos_exit(0)
+}

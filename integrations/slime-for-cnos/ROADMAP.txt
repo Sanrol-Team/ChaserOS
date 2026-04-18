@@ -1,0 +1,32 @@
+Slime For CNOS — 实施路线（与 slimec → NASM 对齐）
+===================================================
+
+前提：**Slime 将作为 CNOS 应用开发的主要语言**（见 README.txt）。
+编译器本体在 Slime **`src/`**（`slimec`），默认产出 **NASM**，再经汇编/链接；CNOS 需要 **x86_64-elf** 裸机 ELF 与 **user.ld**。
+
+Phase 0 — 约定
+--------------
+  * CNOS 用户映像：ELF64，入口 **\_start**，链接脚本 **user/user.ld**。
+  * 包格式：**CNAF**（kernel/fs/cnaf/cnaf_spec.h），IMAGE 节放 ELF。
+  * 主机侧链接器：**GCC For CNOS**（cmake/gcc-for-cnos.cmake）。
+
+Phase 1 — 宿主验证（过渡）
+--------------------------
+  * 安装 **GCC For CNOS**，编出 **user/hello.elf**。
+  * 在 Slime 仓库用现有 **linux-x64** 走通 **slimec → .asm → nasm -felf64 → ld**，建立与 CNOS 无关节的基线。
+
+Phase 2 — CNOS 目标（核心）
+---------------------------
+  * **路径 A（进行中）**：slimec **`--target cnos`**（`Target::CnosX64`）：用户态 **`int $0x80`**（与 `user/hello.c` 一致），**nasm -felf64** + **x86_64-elf-ld -nostdlib -T user/user.ld**。
+  * **路径 B**：slimec 继续出 Linux 风格 NASM，由 **CNOS 包装脚本** 做符号/段修补后再用 **GCC For CNOS** 链接（易碎，仅作过渡）。
+  * **仓库内脚本**：`scripts/build-cnos-slime-toolchain.sh`、`scripts/cnos-slime-compile.sh`；文档 **toolchains/slime-for-cnos/README.txt**。
+
+Phase 3 — 运行时与 ABI
+----------------------
+  * 定义 CNOS 用户态最小 **启动约定**（与 kernel **user.c** / **elf_load** 一致）；
+  * Slime 运行时（若有堆/打印等）必须 **静态链进同一 ELF**，不依赖 Linux syscall。
+
+Phase 4 — CNAF 与工具链打包
+----------------------------
+  * **slimec** 构建产物 + **GCC For CNOS** 一并文档化；
+  * 可选：Slime 源 → ELF → **.cnaf**（MANIFEST + IMAGE）的外部打包脚本。

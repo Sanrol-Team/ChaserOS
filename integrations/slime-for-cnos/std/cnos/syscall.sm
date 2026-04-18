@@ -1,0 +1,19 @@
+// 解析任意 CNOS 系统调用的 int 返回值（kernel 约定：失败时 RAX 为负，errno = -RAX）。
+// 与 cnos/errno 中正数常量比对。
+//
+// import "cnos/syscall"
+// import "cnos/errno"
+
+fn cnos_syscall_errno(ret: int) -> int {
+    if ret < 0 {
+        return 0 - ret
+    }
+    return 0
+}
+
+fn cnos_syscall_ok(ret: int) -> int {
+    if ret < 0 {
+        return 0
+    }
+    return 1
+}

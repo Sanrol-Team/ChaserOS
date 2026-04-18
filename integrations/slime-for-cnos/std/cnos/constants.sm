@@ -1,0 +1,7 @@
+// CNOS 用户态 int $0x80 号 — 须与 kernel/syscall_abi.h 中 CNOS_SYS_* 一致（见 user/SYSCALL-ABI.txt）
+
+const SYS_EXIT  = 0
+const SYS_WRITE = 1
+
+// 与 kernel/syscall_abi.h 中 CNOS_SYSCALL_MAX_WRITE_BYTES 一致（单次 write 长度上限）
+const CNOS_MAX_WRITE_BYTES = 1048576

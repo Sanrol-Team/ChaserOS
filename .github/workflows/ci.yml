@@ -47,14 +47,14 @@ jobs:
         with:
           path: .cross
           # 通过 hashFiles 绑定脚本内容，脚本一改缓存自动失效
-          key: toolchain-${{ runner.os }}-gcc14.2-${{ hashFiles('scripts/build-x86_64-elf-toolchain.sh') }}
+          key: toolchain-${{ runner.os }}-gcc14.2-${{ hashFiles('scripts/build-anaf-cross-toolchain.sh', 'scripts/build-x86_64-elf-toolchain.sh') }}
           restore-keys: |
             toolchain-${{ runner.os }}-gcc14.2-
 
       - name: Build x86_64-elf toolchain
         if: steps.cache-cross.outputs.cache-hit != 'true'
         run: |
-          chmod +x scripts/build-x86_64-elf-toolchain.sh
+          chmod +x scripts/build-anaf-cross-toolchain.sh scripts/build-x86_64-elf-toolchain.sh
           mkdir -p .cross
           bash scripts/build-x86_64-elf-toolchain.sh "${GITHUB_WORKSPACE}/.cross"
 

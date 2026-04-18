@@ -5,14 +5,11 @@
 #include "io.h"
 #include "shell.h"
 #include "process.h"
-
-/* 寄存器结构 */
-struct registers {
-    uint64_t r15, r14, r13, r12, r11, r10, r9, r8;
-    uint64_t rdi, rsi, rbp, rdx, rcx, rbx, rax;
-    uint64_t int_no, err_code;
-    uint64_t rip, cs, rflags, rsp, ss;
-};
+#include "isr.h"
+#include "user.h"
+#include "syscall_abi.h"
+#include "errno.h"
+#include "vmm.h"
 
 /* 键盘扫描码表 (简化版) */
 static const char scancode_ascii[] = {
@@ -26,6 +23,10 @@ static const char scancode_ascii[] = {
 extern void puts(const char *s);
 extern void puts_hex(uint64_t n);
 extern void putchar(char c);
+
+static void syscall_ret(struct registers *regs, int64_t value) {
+    regs->rax = (uint64_t)value;
+}
 
 /* 中断处理主程序 */
 void isr_handler(struct registers *regs) {
@@ -72,7 +73,51 @@ void isr_handler(struct registers *regs) {
         }
         outb(0x20, 0x20);     /* 发送到主片 */
     } else if (regs->int_no == 128) {
-        /* 处理系统调用 */
-        puts("\nSystem Call Triggered (0x80)!\n");
+        /* int $0x80：仅 ring 3 视为合法用户系统调用；否则拒绝并返回 -EPERM */
+        if ((regs->cs & 3u) != 3u) {
+            puts("\n[System call from kernel CPL0/CPL1/CPL2 — denied]\n");
+            syscall_ret(regs, -EPERM);
+            return;
+        }
+
+        switch (regs->rax) {
+        case CNOS_SYS_EXIT:
+            user_on_syscall_exit(regs);
+            break;
+
+        case CNOS_SYS_WRITE: {
+            int fd = (int)regs->rdi;
+            uint64_t buf_addr = regs->rsi;
+            size_t len = (size_t)regs->rdx;
+
+            if (fd != 1) {
+                syscall_ret(regs, -EBADF);
+                break;
+            }
+            if (len == 0) {
+                syscall_ret(regs, 0);
+                break;
+            }
+            if (len > CNOS_SYSCALL_MAX_WRITE_BYTES) {
+                syscall_ret(regs, -EINVAL);
+                break;
+            }
+            if (!vmm_user_range_readable(buf_addr, len)) {
+                syscall_ret(regs, -EFAULT);
+                break;
+            }
+
+            const char *buf = (const char *)buf_addr;
+            for (size_t i = 0; i < len; i++) {
+                putchar(buf[i]);
+            }
+            syscall_ret(regs, (int64_t)len);
+            break;
+        }
+
+        default:
+            syscall_ret(regs, -ENOSYS);
+            break;
+        }
     }
 }

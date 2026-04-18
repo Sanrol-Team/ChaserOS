@@ -8,23 +8,25 @@
 #include "process.h"
 #include "multiboot.h"
 #include "fs/vfs.h"
-#include "drivers/vga.h"
 #include "drivers/serial.h"
+#include "drivers/vga.h"
+#include "console.h"
 #include "drivers/ide.h"
 #include "fs/cnos/cnos_ext2_vol.h"
+#include "gdt.h"
 
 void putchar(char c) {
-    vga_putchar(c);
     serial_putchar(c);
+    console_putchar(c);
 }
 
 void puts(const char *s) {
-    vga_puts(s);
     serial_puts(s);
+    console_puts(s);
 }
 
 void clear_screen(void) {
-    vga_clear();
+    console_clear();
 }
 
 void puts_hex(uint64_t n) {
@@ -58,15 +60,19 @@ static void test_task(void) {
 }
 
 void kernel_main(uint64_t mbi_phys, uint64_t boot_magic) {
-    vga_init();
     serial_init();
 
     if (!multiboot_validate((uint32_t)boot_magic, mbi_phys)) {
-        puts("CNOS: invalid Multiboot2 handoff\n");
+        vga_init();
+        const char *err = "CNOS: invalid Multiboot2 handoff\n";
+        serial_puts(err);
+        vga_puts(err);
         for (;;) {
             __asm__ volatile("hlt");
         }
     }
+
+    console_init(mbi_phys);
 
     pmm_init(mbi_phys);
     vmm_init();
@@ -75,12 +81,13 @@ void kernel_main(uint64_t mbi_phys, uint64_t boot_magic) {
     vfs_init();
 
     process_init();
+    gdt_init();
     idt_init();
     shell_init();
 
     process_create(test_task);
 
-    puts("Welcome to CNOS 64-bit Microkernel (VGA text + serial).\n");
+    puts("Welcome to CNOS 64-bit Microkernel (serial + VGA text or framebuffer shell).\n");
     puts("Memory OK. VFS init done.\n\nMultiboot2 @ ");
     puts_hex(mbi_phys);
     puts("\nPhysical: ");

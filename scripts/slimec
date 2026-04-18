@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+#
+# 若第二个参数以 .cnaf 结尾：按 CNOS 约定调用 cnos-slimec（Sm → CNAF）。
+# 否则转发到宿主 slimec（可选用 CNOS_SLIMEC 或 build/slime-tools/slimec）。
+#
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+pick_slimec() {
+  if [[ -n "${CNOS_SLIMEC:-}" && -x "${CNOS_SLIMEC}" ]]; then
+    printf '%s' "${CNOS_SLIMEC}"
+    return
+  fi
+  if [[ -x "${ROOT}/build/slime-tools/slimec" ]]; then
+    printf '%s' "${ROOT}/build/slime-tools/slimec"
+    return
+  fi
+  command -v slimec || true
+}
+
+if [[ $# -eq 2 && "$2" == *.cnaf ]]; then
+  exec "$SCRIPT_DIR/cnos-slimec.sh" "$@"
+fi
+
+SC="$(pick_slimec)"
+if [[ -z "$SC" ]] || [[ ! -x "$SC" ]]; then
+  echo "未找到 slimec。用于纯 Slime 编译时请安装 slimec，或先构建内核生成 build/slime-tools/slimec。"
+  exit 1
+fi
+exec "$SC" "$@"

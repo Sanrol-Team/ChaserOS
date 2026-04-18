@@ -1,0 +1,7 @@
+// 示例：使用 Slime CNOS STD（需 SLIME_PATH 指向 integrations/slime-for-cnos/std）
+
+import "cnos/io"
+
+fn main {
+    print "Slime CNOS STD: import cnos/io ok\n"
+}

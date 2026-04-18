@@ -34,7 +34,7 @@ jobs:
         id: cache-cross
         with:
           path: .cross
-          key: toolchain-${{ runner.os }}-bu2.42-gcc14.2-${{ hashFiles('scripts/build-x86_64-elf-toolchain.sh') }}
+          key: toolchain-${{ runner.os }}-bu2.42-gcc14.2-${{ hashFiles('scripts/build-anaf-cross-toolchain.sh', 'scripts/build-x86_64-elf-toolchain.sh') }}
 
       - name: Build x86_64-elf toolchain (binutils + gcc from source)
         if: steps.cache-cross.outputs.cache-hit != 'true'

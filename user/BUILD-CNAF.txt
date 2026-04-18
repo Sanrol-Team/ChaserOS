@@ -1,0 +1,40 @@
+CNAF 用户态 ELF（ANAF 交叉工具链）
+================================
+
+cnaf_spec.h 约定：IMAGE 节可为 ELF64（裸机、无宿主 libc）。本目录使用与内核相同的
+x86_64-elf ANAF 工具链，通过 cmake/cnaf-anaf.cmake 追加 freestanding / -nostdlib 标志。
+
+注意：cnaf-anaf.cmake 仅用于本 user/ 子工程；配置内核请仍用 cmake/x86_64-elf.cmake 或 cmake/anaf.cmake。
+
+等价 CMake 别名（文档名「GCC For CNOS」）：
+  cmake/gcc-for-cnos.cmake
+
+步骤：
+
+0) （推荐）在 Linux 上一键安装「CNOS App」工具链（GCC + CNAF 头 + CMake 副本 + 环境脚本）
+   bash scripts/build-cnos-app-linux-toolchain.sh "$HOME/opt/cnos-app"
+   source "$HOME/opt/cnos-app/bin/cnos-app-env.sh"
+
+1) 或仅构建并启用 ANAF（若尚未安装）
+   bash scripts/build-anaf-cross-toolchain.sh "$HOME/opt/cross"
+   source "$HOME/opt/cross/anaf-toolchain.env"
+
+2) 仅编译 CNAF 用户示例
+   bash scripts/build-cnaf-user.sh
+
+   或手写（**当前目录须为 CNOS 仓库根**；工具链路径建议用绝对路径，部分 CMake 将相对路径
+   解析到 **-B** 构建目录而非当前目录）：
+   cmake -S user -B build-cnaf-user -DCMAKE_TOOLCHAIN_FILE="$PWD/cmake/cnaf-anaf.cmake"
+   cmake --build build-cnaf-user
+
+产物：build-cnaf-user/hello.elf、build-cnaf-user/minimal.elf（见 **user/README.txt**）
+
+后续可由打包工具写入 .cnaf 的 IMAGE 节（并配 MANIFEST 节），参见 kernel/fs/cnaf/cnaf_spec.h。
+
+Slime 用户态（与 STD 并行开发）
+-------------------------------
+
+  * 标准库树：**integrations/slime-for-cnos/std**（设置 **SLIME_PATH** 指向该目录）。
+  * 一键环境（仓库根）：**`source scripts/cnos-slime-dev-env.sh`**（等价于导出 **CNOS_ROOT**/**SLIME_PATH**）。
+  * **.sm → .elf**：**scripts/cnos-slime-compile.sh**（需 **nasm**、**x86_64-elf-ld**，运行时桩见 **user/cnos-rt/**）。
+  * 演示：**user/slime-demo.sm**、**user/syscall-errno-demo.sm**（**EBADF**）；说明：**integrations/slime-for-cnos/std/README.txt**、**toolchains/slime-for-cnos/README.txt**。

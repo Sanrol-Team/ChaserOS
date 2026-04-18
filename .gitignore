@@ -1,8 +1,51 @@
-# CMake
+# CMake / 各离构建目录
 /build/
-
-# 本地/CI 工具链一次性源码构建目录
+/build-cnaf-user/
 /build-tmp/
+cmake-build-*/
+
+# Slime / Rust（上游或本机构建的 slimec）
+integrations/slime-for-cnos/upstream/slime/target/
+**/target/
+
+# 本地工具链安装前缀（若放在仓库旁）
+/opt/
+*.trace
+
+# 编译中间产物（仓库根或脚本生成的裸 ELF / 对象）
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+*.exp
+*.pdb
+*.ilk
+*.elf
+!iso/boot/**/*.elf
+
+# 打包 / 镜像（保留 iso/ 中需跟踪的文件；生成物忽略）
+*.iso
+*.img
+*.qcow2
+*.vdi
+
+# 编辑器与系统杂项
+.idea/
+*.code-workspace
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+.cache/
+compile_commands.json
+
+# Python / 其它脚本缓存
+__pycache__/
+*.py[cod]
 
 # 构建产物复制到 ISO 目录，不纳入版本库
 /iso/boot/kernel.elf

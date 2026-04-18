@@ -28,4 +28,16 @@ void vmm_unmap(uint64_t pml4, uint64_t virt);
 /* 创建新的地址空间 (PML4) */
 uint64_t vmm_create_address_space();
 
+/*
+ * 在 2MB 大页（entry.asm 引导页表）上为含 virt 的槽位置 U/S，使用户态可访问该 2MiB 区域。
+ * 完整 4KiB 粒度隔离需日后替换引导页表实现。
+ */
+void vmm_grant_user_2mb_region(uint64_t virt);
+
+/**
+ * [addr, addr+len) 是否在 **当前** 页表中均为用户可读页（PAGE_PRESENT | PAGE_USER）。
+ * len==0 时视作合法（不产生访问）。
+ */
+int vmm_user_range_readable(uint64_t addr, size_t len);
+
 #endif

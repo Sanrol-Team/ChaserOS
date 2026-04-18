@@ -1,0 +1,8 @@
+// POSIX errno 编号（正数），与 kernel/errno.h 一致。
+// 系统调用返回 int：成功为非负（write 为已写字节数）；失败时 RAX 为负数，errno = -返回值。
+
+const EPERM   = 1
+const EBADF   = 9
+const EINVAL  = 22
+const EFAULT  = 14
+const ENOSYS  = 38

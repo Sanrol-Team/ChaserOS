@@ -1,0 +1,6 @@
+# Hashes of file build rules.
+41eaf5422af631cc94d5838b4b0c6742 CMakeFiles/cnos_iso
+cd01a93b892394b4b1301851c6061b0e CMakeFiles/run
+142e2eab0ab100807149de9e7198f129 cnos.iso
+0c9e0b32224be206019a37a9739e3023 hello_elf.o
+01d141395915ad3e1cb2ae24cb9f8926 user/hello.elf

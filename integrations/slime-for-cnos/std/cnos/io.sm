@@ -1,0 +1,22 @@
+// Slime CNOS STD — I/O / 进程（依赖 user/cnos-rt/cnos_syscalls.asm 链接）
+// 使用前请设置：export SLIME_PATH=<CNOS>/integrations/slime-for-cnos/std
+// 并在外层 import "cnos/io"
+//
+// cnos_sys_write / cnos_write：成功返回已写字节数（≥0）；失败返回负数（见 cnos/syscall、cnos/errno）。
+
+extern "C" fn cnos_sys_write(fd: int, buf: int, len: int) -> int
+extern "C" fn cnos_sys_exit(code: int) -> int
+
+// 写到文件描述符 fd（当前内核仅 fd==1 控制台）
+fn cnos_write(fd: int, ptr: int, len: int) -> int {
+    return cnos_sys_write(fd, ptr, len)
+}
+
+fn cnos_write_stdout(ptr: int, len: int) -> int {
+    return cnos_sys_write(1, ptr, len)
+}
+
+// 退出进程（不返回用户态）
+fn cnos_exit(code: int) {
+    cnos_sys_exit(code)
+}

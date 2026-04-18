@@ -26,4 +26,14 @@ int ide_capacity_sectors(uint8_t drive, uint32_t *sectors_out);
 int ide_read_sectors(uint8_t drive, uint32_t lba, uint32_t count, void *buf);
 int ide_write_sectors(uint8_t drive, uint32_t lba, uint32_t count, const void *buf);
 
+/* ATAPI（如 CD-ROM）：IDENTIFY PACKET DEVICE，成功则 model 同上 */
+int ide_identify_packet(uint8_t drive, char model[40]);
+
+#define IDE_CLASS_NONE   0
+#define IDE_CLASS_ATA    1
+#define IDE_CLASS_ATAPI  2
+
+/* 先尝试 ATA IDENTIFY，失败再试 ATAPI；返回 0 且 *class_out 有效 */
+int ide_probe_type(uint8_t drive, char model[40], int *class_out);
+
 #endif

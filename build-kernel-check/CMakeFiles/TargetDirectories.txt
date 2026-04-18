@@ -1,0 +1,5 @@
+/run/media/forge/D649-CD2F/CNOS/build-kernel-check/CMakeFiles/kernel.elf.dir
+/run/media/forge/D649-CD2F/CNOS/build-kernel-check/CMakeFiles/cnos_iso.dir
+/run/media/forge/D649-CD2F/CNOS/build-kernel-check/CMakeFiles/run.dir
+/run/media/forge/D649-CD2F/CNOS/build-kernel-check/CMakeFiles/edit_cache.dir
+/run/media/forge/D649-CD2F/CNOS/build-kernel-check/CMakeFiles/rebuild_cache.dir
