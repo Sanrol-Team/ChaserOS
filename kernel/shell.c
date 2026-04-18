@@ -1,7 +1,6 @@
 /* kernel/shell.c - 基础 Shell + 卷 / ext2 / IDE 命令 */
 
 #include "shell.h"
-#include "pmm.h"
 #include "drivers/vga.h"
 #include "drivers/pci.h"
 #include "drivers/ide.h"
@@ -11,8 +10,13 @@
 #include "power.h"
 #include "console.h"
 #include "sysinfo.h"
+#include "pmm.h"
 #include <stdint.h>
 #include <stddef.h>
+
+#ifndef CNRUN_MAX_BYTES
+#define CNRUN_MAX_BYTES (2u * 1024u * 1024u)
+#endif
 
 extern void puts(const char *s);
 extern void putchar(char c);
@@ -150,6 +154,8 @@ void shell_execute(const char *cmd) {
         puts("  lspci             - PCI devices\n");
         puts("  ps                - Fake process list\n");
         puts("  hello             - Run embedded ring-3 user demo (C)\n");
+        puts("  cnrun             - Run embedded CNAF demo (MANIFEST + hello.elf IMAGE)\n");
+        puts("  cnrun <file>      - Run .cnaf from VFS root (needs mount; max ~2 MiB)\n");
         puts("  slime             - Run embedded Slime user demo (requires CNOS_WITH_SLIME_USER)\n");
         puts("  systeminfo        - OS / RAM / display / font / IDE / CD-ROM\n");
     } else if (strcmp(verb, "clear") == 0) {
@@ -356,6 +362,46 @@ void shell_execute(const char *cmd) {
         puts(" 1   | R     | Shell\n");
     } else if (strcmp(verb, "hello") == 0) {
         user_run_embedded_hello();
+    } else if (strcmp(verb, "cnrun") == 0) {
+        skip_sp(&p);
+        if (*p == '\0') {
+            user_run_embedded_demo_cnaf();
+            return;
+        }
+        char name[128];
+        int ni = 0;
+        while (*p && *p != ' ' && ni < 127) {
+            name[ni++] = *p++;
+        }
+        name[ni] = '\0';
+        vfs_stat_t st;
+        int sr = vfs_stat(name, &st);
+        if (sr == VFS_ERR_NOTMOUNTED) {
+            puts("cnrun: VFS not mounted (try: mount)\n");
+            return;
+        }
+        if (sr != VFS_ERR_NONE) {
+            puts("cnrun: file not found\n");
+            return;
+        }
+        if (st.size == 0 || st.size > CNRUN_MAX_BYTES) {
+            puts("cnrun: empty or too large\n");
+            return;
+        }
+        uint64_t pages64 = ((uint64_t)st.size + (uint64_t)PAGE_SIZE - 1ULL) / (uint64_t)PAGE_SIZE;
+        uint8_t *blob = (uint8_t *)pmm_alloc_contiguous_pages(pages64);
+        if (!blob) {
+            puts("cnrun: alloc failed\n");
+            return;
+        }
+        size_t got = 0;
+        int rr = vfs_read_file_range(name, 0u, blob, (size_t)st.size, &got);
+        if (rr != VFS_ERR_NONE || got != st.size) {
+            pmm_free_contiguous(blob, pages64);
+            puts("cnrun: read failed\n");
+            return;
+        }
+        user_run_cnaf_from_owned_pages(blob, got, pages64, name);
     } else if (strcmp(verb, "slime") == 0) {
         user_run_embedded_slime_hello();
     } else if (strcmp(verb, "systeminfo") == 0) {

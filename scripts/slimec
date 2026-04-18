@@ -24,6 +24,11 @@ if [[ $# -eq 2 && "$2" == *.cnaf ]]; then
   exec "$SCRIPT_DIR/cnos-slimec.sh" "$@"
 fi
 
+# Slime → ar → CNAFL（需额外 --lib-name，见 scripts/cnos-slimec-lib.sh）
+if [[ $# -ge 4 && "$2" == *.cnafl && "$3" == "--lib-name" ]]; then
+  exec "$SCRIPT_DIR/cnos-slimec-lib.sh" "$@"
+fi
+
 SC="$(pick_slimec)"
 if [[ -z "$SC" ]] || [[ ! -x "$SC" ]]; then
   echo "未找到 slimec。用于纯 Slime 编译时请安装 slimec，或先构建内核生成 build/slime-tools/slimec。"

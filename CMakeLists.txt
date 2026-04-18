@@ -19,6 +19,8 @@ set(KERNEL_FS_LIB ${CMAKE_SOURCE_DIR}/kernel/fs/lib)
 set(KERNEL_FS_EXT2FS ${CMAKE_SOURCE_DIR}/kernel/fs/lib/ext2fs)
 set(KERNEL_FS_CNAF ${CMAKE_SOURCE_DIR}/kernel/fs/cnaf)
 
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
 # e2fsprogs 整树在 kernel/fs/lib 等目录；CNOS 只链接下列 .c，按需再追加 lib/ext2fs/*.c（见 kernel/fs/README）
 
 set(KERNEL_ASM
@@ -46,6 +48,7 @@ set(KERNEL_C
     kernel/fs/cnos/cnos_alloc.c
     kernel/fs/cnos/cnos_ext2.c
     kernel/fs/cnaf/cnaf_validate.c
+    kernel/fs/cnaf/cnaf_image.c
     kernel/drivers/vga.c
     kernel/drivers/font.c
     kernel/drivers/graphics.c
@@ -61,6 +64,8 @@ set(KERNEL_C
 
 set(USER_HELLO_ELF ${CMAKE_BINARY_DIR}/user/hello.elf)
 set(USER_HELLO_OBJ ${CMAKE_BINARY_DIR}/hello_elf.o)
+set(DEMO_CNAF_BIN ${CMAKE_BINARY_DIR}/demo_cnaf/demo.cnaf)
+set(DEMO_CNAF_OBJ ${CMAKE_BINARY_DIR}/demo_cnaf_obj.o)
 
 # 可选：嵌入 Slime（slimec --target cnos）编译的 hello_sm.elf；默认在仓库内 cargo 编译 slimec（见 CNOS_BUILD_SLIMEC）
 option(CNOS_WITH_SLIME_USER "嵌入 Slime 用户态 hello_sm.elf（需 nasm；slimec 见 CNOS_BUILD_SLIMEC / CNOS_SLIMEC）" OFF)
@@ -85,6 +90,20 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_BINARY_DIR} ${CMAKE_LINKER} -r -b binary -o hello_elf.o hello.bin
     DEPENDS ${USER_HELLO_ELF}
     COMMENT "嵌入 hello.bin"
+    VERBATIM
+)
+
+# 首个 CNAF 演示包：MANIFEST + IMAGE(hello.elf)，供内核 cnrun（无参数）解析并运行
+add_custom_command(
+    OUTPUT ${DEMO_CNAF_OBJ}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/demo_cnaf
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/pack-cnaf.py ${DEMO_CNAF_BIN} ${USER_HELLO_ELF}
+            --bundle-id cnos.demo.first_cnaf --name FirstCNAF --version 0.1.0
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${DEMO_CNAF_BIN} ${CMAKE_BINARY_DIR}/demo_cnaf.bin
+    COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_BINARY_DIR}
+            ${CMAKE_LINKER} -r -b binary -o demo_cnaf_obj.o demo_cnaf.bin
+    DEPENDS ${USER_HELLO_ELF} ${CMAKE_SOURCE_DIR}/scripts/pack-cnaf.py
+    COMMENT "打包并嵌入首个 CNAF（demo_cnaf.bin）"
     VERBATIM
 )
 
@@ -146,7 +165,7 @@ if(CNOS_WITH_SLIME_USER)
     set(KERNEL_EXTRA_OBJ ${USER_SLIME_HELLO_OBJ})
 endif()
 
-add_executable(kernel.elf ${KERNEL_ASM} ${KERNEL_C} ${USER_HELLO_OBJ} ${KERNEL_EXTRA_OBJ})
+add_executable(kernel.elf ${KERNEL_ASM} ${KERNEL_C} ${USER_HELLO_OBJ} ${DEMO_CNAF_OBJ} ${KERNEL_EXTRA_OBJ})
 
 target_include_directories(kernel.elf PRIVATE
     ${KERNEL_INCLUDE}

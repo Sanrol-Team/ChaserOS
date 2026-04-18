@@ -6,6 +6,7 @@
 #include "pmm.h"
 #include "vmm.h"
 #include "process.h"
+#include "fs/cnaf/cnaf_image.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -25,6 +26,9 @@ uint64_t cnos_active_user_pid = 2;
 
 extern char _binary_hello_bin_start[];
 extern char _binary_hello_bin_end[];
+
+extern char _binary_demo_cnaf_bin_start[];
+extern char _binary_demo_cnaf_bin_end[];
 
 #ifdef CNOS_HAVE_SLIME_USER
 extern char _binary_hello_sm_bin_start[];
@@ -63,6 +67,38 @@ void user_on_syscall_exit(struct registers *regs) {
     regs->rflags = 0x202;
 }
 
+static void user_run_cnaf_inner(const uint8_t *blob, size_t blob_sz, const char *tag, uint8_t *free_blob,
+                                uint64_t free_pages) {
+    const uint8_t *img = NULL;
+    size_t img_sz = 0;
+    cnaf_err_t ce = cnaf_extract_image(blob, blob_sz, &img, &img_sz);
+    if (ce != CNAF_OK) {
+        if (free_blob) {
+            pmm_free_contiguous(free_blob, free_pages);
+        }
+        puts("cnaf: bundle invalid ("); puts(tag); puts(")\n");
+        return;
+    }
+
+    uint64_t entry = 0;
+    grant_user_regions();
+
+    int lr = elf_load_flat(img, img_sz, &entry);
+    if (free_blob) {
+        pmm_free_contiguous(free_blob, free_pages);
+    }
+    if (lr != 0) {
+        puts("cnaf: ELF load failed ("); puts(tag); puts(")\n");
+        return;
+    }
+
+    cnos_active_user_pid = 2;
+    process_bind_user_slot(cnos_active_user_pid);
+    user_fd_reset();
+    puts("[kernel] jumping to user ("); puts(tag); puts(", CNAF IMAGE, ring 3)...\n");
+    user_jump_to_ring3(entry, USER_STACK_TOP);
+}
+
 static void user_run_embedded_elf(const uint8_t *blob_start, const uint8_t *blob_end, const char *tag) {
     size_t sz = (size_t)(blob_end - blob_start);
     uint64_t entry = 0;
@@ -93,4 +129,14 @@ void user_run_embedded_slime_hello(void) {
 #else
     puts("Slime user ELF not embedded. Reconfigure with -DCNOS_WITH_SLIME_USER=ON (needs slimec in PATH).\n");
 #endif
+}
+
+void user_run_embedded_demo_cnaf(void) {
+    const uint8_t *p = (const uint8_t *)_binary_demo_cnaf_bin_start;
+    size_t n = (size_t)(_binary_demo_cnaf_bin_end - _binary_demo_cnaf_bin_start);
+    user_run_cnaf_inner(p, n, "embedded demo.cnaf", NULL, 0);
+}
+
+void user_run_cnaf_from_owned_pages(uint8_t *blob, size_t blob_sz, uint64_t blob_pages, const char *tag) {
+    user_run_cnaf_inner(blob, blob_sz, tag, blob, blob_pages);
 }

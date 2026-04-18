@@ -42,6 +42,12 @@ Slime 源码必须支持 **`--target cnos`**；说明见 **integrations/slime-fo
 
   bash scripts/cnos-slimec.sh ./test.sm ./test.cnaf
 
+**一行：`.sm` → `.cnafl`（IMAGE 为 `ar` 静态归档；需 `--lib-name`）**
+
+  bash scripts/cnos-slimec-lib.sh ./stub.sm ./stub.cnafl --lib-name stub
+
+或使用仓库 **`scripts/slimec`**：`./test.sm ./test.cnaf` 自动走 CNAF；`./lib.sm ./lib.cnafl --lib-name foo` 走 CNAFL。
+
 若希望命令形如 **`slimec ./test.sm ./test.cnaf`**：把仓库 **`scripts/`** 加到 `PATH` 后使用其中的 **`slimec` 包装脚本**（仅当「恰好两个参数且输出以 `.cnaf` 结尾」时走 CNAF；其它参数仍交给真正的 slimec）。
 
 **一键：从 .sm 到 ELF（不打包 CNAF）**
