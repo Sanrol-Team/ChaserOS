@@ -102,7 +102,7 @@ int vmm_user_range_writable(uint64_t addr, size_t len) {
     return 1;
 }
 
-void vmm_grant_user_2mb_region(uint64_t virt) {
+void vmm_grant_user_2mb_region(uint64_t virt, int user_writable) {
     uint64_t *pml4 = (uint64_t *)vmm_get_current_pml4();
     uint64_t pml4e = pml4[PML4_INDEX(virt)];
     if (!(pml4e & PAGE_PRESENT)) {
@@ -117,12 +117,17 @@ void vmm_grant_user_2mb_region(uint64_t virt) {
     uint64_t idx = PD_INDEX(virt);
     if (pd[idx] & PAGE_PRESENT) {
         /*
-         * 引导页表里大页常为 R/W+P；在 EFER.NXE=1 时若 PD 条目高位曾被置位，
-         * 可能表现为「不可执行」。用户代码与栈在用户态必须可访问：清 NX、置 U/S。
+         * 引导页表里 2MiB 条目录项常为 R/W+P（0x83）。对用户代码区须清 W，保持 R-X，
+         * 否则在 NX 启用时易出现用户态取指页故障（CR2=RIP）。
          */
         uint64_t ent = pd[idx];
         ent &= ~PAGE_NX;
-        ent |= PAGE_USER | PAGE_WRITE;
+        ent |= PAGE_USER;
+        if (user_writable) {
+            ent |= PAGE_WRITE;
+        } else {
+            ent &= ~PAGE_WRITE;
+        }
         pd[idx] = ent;
         __asm__ volatile("invlpg (%0)" :: "r"(virt) : "memory");
     }

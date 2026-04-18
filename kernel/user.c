@@ -15,8 +15,8 @@
 #define USER_STACK_TOP   0x801000ULL
 
 static void grant_user_regions(void) {
-    vmm_grant_user_2mb_region(USER_TEXT_BASE);
-    vmm_grant_user_2mb_region(USER_STACK_TOP - 4096ULL);
+    vmm_grant_user_2mb_region(USER_TEXT_BASE, 0);
+    vmm_grant_user_2mb_region(USER_STACK_TOP - 4096ULL, 1);
     vmm_flush_tlb_all();
 }
 

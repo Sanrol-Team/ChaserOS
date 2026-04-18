@@ -30,9 +30,10 @@ uint64_t vmm_create_address_space();
 
 /*
  * 在 2MB 大页（entry.asm 引导页表）上为含 virt 的槽位置 U/S，使用户态可访问该 2MiB 区域。
+ * user_writable：代码/只读映射用 0 → 清除 R/W（R-X，避免若干环境下「可写页不可执行」）；栈/数据用 1。
  * 完整 4KiB 粒度隔离需日后替换引导页表实现。
  */
-void vmm_grant_user_2mb_region(uint64_t virt);
+void vmm_grant_user_2mb_region(uint64_t virt, int user_writable);
 
 /** 重载 CR3 以 flush 全 TLB（用户页表位次更新后建议调用） */
 void vmm_flush_tlb_all(void);
