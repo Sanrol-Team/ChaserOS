@@ -14,11 +14,20 @@ header_start:
     dd 0xE85250D6
     dd 0
     dd header_end - header_start
-    ; checksum：使 magic+arch+length+checksum 及所有 tag 的 u32 之和 ≡ 0 (mod 2^32)
+    ; checksum：仅 magic + arch + length + checksum 四字段之和 ≡ 0 (mod 2^32)
     dd (0x100000000 - (0xE85250D6 + (header_end - header_start))) & 0xffffffff
-    ; 勿在此处请求 framebuffer（Multiboot2 type 5）：否则 GRUB 会切图形模式，
-    ; 显示器扫描线性帧缓冲，写 0xB8000 文本显存在 QEMU 窗口里不可见。
-    align 8
+    ; Framebuffer（type 5）：0×0×0 表示不强制像素模式；实际分辨率在 iso/boot/grub.cfg 里改 gfxpayload。
+    ; Console flags（type 4）：仅 bit1；勿置 bit0（UEFI 上会 “requires a console” 失败）
+    dw 5, 0
+    dd 20
+    dd 0
+    dd 0
+    dd 0
+    align 8, db 0
+    dw 4, 0
+    dd 12
+    dd 2
+    align 8, db 0
     dw 0, 0
     dd 8
 header_end:

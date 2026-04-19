@@ -55,6 +55,10 @@ int multiboot_fill_vbe(uint64_t mbi_phys, struct vbe_mode_info *out) {
             tag->size >= sizeof(struct multiboot_tag_framebuffer)) {
             struct multiboot_tag_framebuffer *fb =
                 (struct multiboot_tag_framebuffer *)tag;
+            if (fb->framebuffer_addr == 0 || fb->framebuffer_type != MULTIBOOT_FRAMEBUFFER_TYPE_RGB) {
+                tag = next_tag(tag);
+                continue;
+            }
             out->width = (uint16_t)fb->framebuffer_width;
             out->height = (uint16_t)fb->framebuffer_height;
             out->pitch = fb->framebuffer_pitch;
@@ -65,6 +69,21 @@ int multiboot_fill_vbe(uint64_t mbi_phys, struct vbe_mode_info *out) {
         tag = next_tag(tag);
     }
     return -1;
+}
+
+int multiboot_has_efi_handoff(uint64_t mbi_phys) {
+    struct multiboot_tag *tag =
+        (struct multiboot_tag *)((uint8_t *)(uintptr_t)mbi_phys + 8);
+    for (;;) {
+        if (tag->type == MULTIBOOT_TAG_TYPE_END) {
+            break;
+        }
+        if (tag->type == MULTIBOOT_TAG_TYPE_EFI32 || tag->type == MULTIBOOT_TAG_TYPE_EFI64) {
+            return 1;
+        }
+        tag = next_tag(tag);
+    }
+    return 0;
 }
 
 int multiboot_find_module_suffix(uint64_t mbi_phys, const char *suffix, uint32_t *mod_start, uint32_t *mod_end) {

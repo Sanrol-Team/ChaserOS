@@ -15,4 +15,11 @@ void console_fb_dims(int *out_w, int *out_h);
 uint64_t console_get_mbi_phys(void);
 const char *console_font_desc(void);
 
+/*
+ * 帧缓冲 Shell：运行时调整字模大小（1–10，越大字越大）；0＝按屏高自动。
+ * 不改变硬件像素模式；真分辨率请改 iso/boot/grub.cfg 中 gfxpayload 后重启。
+ */
+void console_set_fb_font_scale(int step);
+int console_get_fb_font_scale(void);
+
 #endif

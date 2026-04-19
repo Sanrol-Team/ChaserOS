@@ -1,6 +1,6 @@
 # ChaserOS
 
-**ChaserOS**（Chaser OS）是基于 **64 位微内核** 的实验性操作系统，为 **CNOS 的变体分支**：在保留 Multiboot2、VFS/ext2、用户态 ABI 与 Slime 集成思路的同时，使用独立项目名与构建产物命名。通过 **GRUB2 + Multiboot2** 从 ISO 启动；控制台为 **VGA 文本模式 + 串口**（Shell 经 PS/2 键盘 IRQ1）。存储侧正在接入 **e2fsprogs / libext2fs** 子集，内核提供 **VFS 根挂载**、裁剪 **ext2** 玩具卷与 **CNAF/CNAFL** 头校验。
+**ChaserOS**（Chaser OS）是基于 **x86_64 混合内核** 的实验性操作系统，为 **CNOS 的变体分支**：**驱动、VFS、控制台等运行在同一内核地址空间**（单体风格），同时提供 **IRQ0 协作式轮转** 的内核线程槽位、**IPC** 与 **ring 3 用户槽位**（见 **`kernel/sched.h`**），**不是**「服务全部外迁」的纯微内核。通过 **GRUB2 + Multiboot2** 从 ISO 启动；控制台为 **VGA 文本模式 + 串口**（Shell 经 PS/2 键盘 IRQ1）。存储侧正在接入 **e2fsprogs / libext2fs** 子集，内核提供 **VFS 根挂载**、裁剪 **ext2** 玩具卷与 **CNAF/CNAFL** 头校验。
 
 ## 特性（概览）
 
@@ -8,12 +8,12 @@
 - **控制台**：`0xB8000` 文本缓冲 + COM1 镜像输出。
 - **内存**：物理页（PMM）、页表（VMM）；对用户缓冲区做 **可读/可写** 页表校验（系统调用路径）。
 - **时钟**：IRQ0 递增单调 **`chaseros_kernel_ticks`**，可供用户态 **`SYS_UPTIME_TICKS`** 查询。
-- **VFS**：根卷需 **`mount`** 后，`ls` / `read` / `write` 才走 VFS；**`format`** 直接在当前块设备卷上创建极简 ext2（不要求已挂载）。详见下文「Shell 与卷」。
+- **VFS**：根卷需 **`mount`** 后，`ls` / `read` / `write` 才走 ext2；另有 **`/dev`** 伪节点（如 **`null`** / **`zero`**），与块设备后端并存。**`format`** 直接在当前块设备卷上创建极简 ext2（不要求已挂载）。详见下文「Shell 与卷」。
 - **文件系统后端**：`kernel/fs` 内含裁剪后的 **e2fsprogs** 源码树（按需编入 CMake），说明见 `kernel/fs/README`。
-- **IPC（实验）**：同步消息路径与 `process_find_by_pid`、发送队列、`msg_pending`（完整阻塞/调度仍在演进）。源码见 `kernel/ipc.c`。
+- **调度与 IPC**：**混合内核** 调度入口见 **`kernel/sched.c`**（`sched_on_timer_tick` / `sched_yield`）；**`ps`** 可查看任务槽与上下文切换计数。同步消息见 **`kernel/ipc.c`**（与 `USER_SLOT`、阻塞协作）。
 - **用户态**：ring 3 嵌入 ELF（默认 C `user/hello.c`）；**`int $0x80`** 提供 **exit / write(1,2) / getpid / read(0,EOF) / uptime_ticks**。权威说明：**`kernel/syscall_abi.h`**、**`user/SYSCALL-ABI.txt`**。
 - **Slime**：可选 **`CHASEROS_WITH_SLIME_USER`** 嵌入 **`slimec --target cnos`** 产物（Slime 上游仍使用 `cnos` 目标名）；标准库位于 **`integrations/slime-for-chaseros/std`**，脚本见 **`scripts/cnos-slime-compile.sh`** 等。
-- **应用包**：CNAF/CNAFL 规范与校验（`kernel/fs/cnaf/`）；用户 ELF 独立构建见 **`user/BUILD-CNAF.txt`**。
+- **应用包**：CNAF/CNAFL 规范与校验（`kernel/fs/cnaf/`）；CNAF App 的 IMAGE 为 **CNAB**（内核不解析 ELF），构建说明见 **`user/BUILD-CNAF.txt`**。
 
 ## Shell 与卷（常用流程）
 
@@ -161,4 +161,5 @@ make run
 
 ---
 
-**后续方向（非承诺）**：VFS 多后端与路径解析、用户态 **open/read 文件**（接 VFS + fd 表）、IPC 与调度闭环、CNAF 按需加载等。
+**后续方向（非承诺）**：VFS 更多后端与挂载语义、用户态 **write 追加 / 目录 fd**、**SYS_CHDIR**、多进程调度与 ring 3 抢占、CNAF **按需解析 MANIFEST / 依赖 CNAFL** 等。  
+**已完成**：`cnrun` 路径下 CNAF **节表头缓冲 + IMAGE 流式 CNAB 装载**（非 ELF；见 **`user_run_cnaf_from_path_streaming`**）；Slime 一键 **`scripts/slime-pack-cnaf.sh`** 与 **`user/BUILD-CNAF.txt`**。

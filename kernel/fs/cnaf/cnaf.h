@@ -14,4 +14,10 @@
  */
 cnaf_err_t cnaf_probe_header(const void *data, size_t len, cnaf_file_header_t *out);
 
+/**
+ * 仅从至少 36 字节前缀解析文件头（不要求 len >= header_bytes）。
+ * 用于流式装载：先读小块得到 header_bytes，再读满节表。
+ */
+cnaf_err_t cnaf_parse_header_prefix(const void *data, size_t len, cnaf_file_header_t *out);
+
 #endif

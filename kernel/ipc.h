@@ -13,9 +13,8 @@ typedef struct {
     uint8_t payload[MAX_MSG_PAYLOAD];
 } message_t;
 
-#define IPC_OK           0
-#define IPC_ERROR       -1
-#define IPC_WOULD_BLOCK -2
+#define IPC_OK     0
+#define IPC_ERROR -1
 
 struct proc;
 

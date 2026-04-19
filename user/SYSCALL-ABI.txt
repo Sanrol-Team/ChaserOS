@@ -105,7 +105,7 @@ Slime 常量模块：**integrations/slime-for-chaseros/std/chaseros/constants.sm
     **行为**：  
       **fd == 0**（stdin）：无输入设备时返回 **0**（EOF）。  
       **fd == 1 或 2**：**-EBADF**（stdout/stderr 只写）。  
-      **fd ≥ 3**：由 **`open`** 打开的根目录普通文件（VFS 已挂载、内核记录路径与读游标）；读到文件尾后返回 **0**。  
+      **fd ≥ 3**：由 **`open`** 打开的 VFS 文件（内核记录规范化路径与读游标；含 **ext2** 与 **`/dev`** 伪节点）；读到文件尾后返回 **0**。  
     **-EINVAL** / **-EFAULT** / **-EIO**：越界长度、缓冲区不可写、底层读失败等。
 
   ----
@@ -120,7 +120,7 @@ Slime 常量模块：**integrations/slime-for-chaseros/std/chaseros/constants.sm
   ----
   **CHASEROS_SYS_OPEN（5）**
 
-    **用途**：在 **VFS 根** 打开普通文件（仅 **ext2** 根目录一层文件名，无 `/` 子路径）。
+    **用途**：在已挂载 VFS 上打开文件。**绝对路径** 以 **`/`** 开头；否则相对 **当前工作目录**（与 Shell **`cd`** 同步，跳入用户程序时从 **`shell_get_cwd`** 快照）。支持 **ext2** 卷上路径及内核 **`/dev/null`**、**`/dev/zero`** 等。
 
     **参数**：**RDI** = 路径 **C 字符串** 的用户 VA（以 `\\0` 结尾）；**RSI** = flags（预留，只读打开传 **0**）。
 
@@ -141,7 +141,7 @@ Slime 常量模块：**integrations/slime-for-chaseros/std/chaseros/constants.sm
   **混合内核 IPC（7–10）**
 
   * **CHASEROS_SYS_IPC_SEND（7）**：**RDI** = 目标 PID；**RSI** = **`message_t`** 用户 VA；成功 **RAX=0**；失败 **-EINVAL** / **-EFAULT**。
-  * **CHASEROS_SYS_IPC_RECV（8）**：**RDI** = 期望发送方 PID（**0** = 任意）；**RSI** = 输出 **`message_t`**；暂无消息 **-EAGAIN**（**11**）。
+  * **CHASEROS_SYS_IPC_RECV（8）**：**RDI** = 期望发送方 PID（**0** = 任意）；**RSI** = 输出 **`message_t`**；无可用消息时 **阻塞**（**sti/hlt**）直至收到或从队列被交付。
   * **CHASEROS_SYS_IPC_REPLY（9）**：**RDI** = **WAITING_REPLY** 的对端 PID；**RSI** = **`message_t`**。
   * **CHASEROS_SYS_IPC_CALL（10）**：**RDI** = 目标 PID；**RSI** = 请求 **`message_t`**；**RDX** = 响应 **`message_t`** 输出缓冲区。内核 **Send** 后阻塞直至收到 **Reply**（**sti/hlt**），再写入响应；成功 **RAX=0**。
 

@@ -19,7 +19,7 @@ Slime For CNOS（CNOS 应用层主要语言）
 ## 当前阶段（过渡）
 
 1. **C + GCC For CNOS**：仍可用于内核携带样例、`user/hello.elf`、与加载器验证（见 `user/`、`toolchains/gcc-for-cnos/`）。
-2. **Slime**：在 **slimec** 增加 **CNOS** 目标（或固定 NASM → `x86_64-elf-ld` + `user.ld`）后，作为 **CNAF IMAGE** 主路径。
+2. **Slime**：在 **slimec** 增加 **CNOS** 目标（或固定 NASM → `x86_64-elf-ld` + `user.ld`）后，经 **CNAB** 封装作为 **CNAF IMAGE** 主路径（内核不解析 ELF）。
 
 ## CNOS 对接要点
 
@@ -30,17 +30,19 @@ Slime For CNOS（CNOS 应用层主要语言）
 ## 工具链（slimec + GCC For CNOS）
 
   * **一键交叉链**：**scripts/build-cnos-cross-toolchain.sh**（见 **toolchains/README.txt**）
-  * 说明：**toolchains/slime-for-cnos/README.txt**
+  * 说明：**toolchains/slime-for-cnos/README.txt**；集成说明以本目录 **integrations/slime-for-chaseros** 为准。
   * 构建 slimec 并安装：`bash scripts/build-cnos-slime-toolchain.sh <前缀>`
   * 编译 `.sm` → 用户 ELF：`bash scripts/cnos-slime-compile.sh user/hello.sm out.elf`
   * slimec 须支持 **`--target cnos`**（见上游 Slime `Target::CnosX64`；若官方尚未合并，使用含 CNOS 补丁的 slimec）。
-  * **内核**：可选 **`cmake -DCNOS_WITH_SLIME_USER=ON`** 将 `user/hello.sm` 编入内核镜像，shell 命令 **`slime`** 运行（与 **`hello`** C 示例并列）。默认在同一构建内 **`cargo build`** 编译上游 Slime 得到 **`build/slime-tools/slimec`**（**CNOS_BUILD_SLIMEC**）；见 **upstream/README.txt**。
-  * **宿主打包 CNAF**：**`bash scripts/cnos-slimec.sh ./app.sm ./app.cnaf`**；或 **`scripts/slimec ./app.sm ./app.cnaf`**（见 **toolchains/slime-for-cnos/README.txt**）。**内核 shell 无法执行 slimec**，仅在开发机终端使用。
+  * **内核**：可选 **`cmake -DCHASEROS_WITH_SLIME_USER=ON`** 将 **`user/hello.sm`** 编入内核镜像，shell 命令 **`slime`** 运行；并 **`user/cnafloader.sm`** → **`cnafloader.cnab`**（由 ELF 经 objcopy+wrap-cnab 生成）作为 **内嵌 `demo_cnaf.bin` 的 IMAGE**（无参 **`cnrun`** 即运行 Slime CNAFLOADER，替代默认 C **`hello.cnab`** 包）。默认在同一构建内 **`cargo build`** 编译上游 Slime 得到 **`build/slime-tools/slimec`**（**CHASEROS_BUILD_SLIMEC**）；见 **upstream/README.txt**。
+  * **宿主打包 CNAF（ChaserOS 仓库内）**：**`bash scripts/slime-pack-cnaf.sh ./app.sm ./app.cnaf`**（**cnos-slime-compile.sh** → **objcopy** → **wrap-cnab.py** → **pack-cnaf.py**）；依赖 **slimec --target cnos**、**nasm**、**x86_64-elf-ld**、**x86_64-elf-objcopy**、**Python3**。说明见 **user/BUILD-CNAF.txt**。
+  * **旧脚本名**（若仍存在）：**`scripts/cnos-slimec.sh`** 等；**内核 shell 无法执行 slimec**，仅在开发机终端打包。
   * **宿主打包 CNAFL（静态库单元）**：**`bash scripts/cnos-slimec-lib.sh ./lib.sm ./out.cnafl --lib-name mylib`**；或用 **`scripts/slimec ./lib.sm ./out.cnafl --lib-name mylib`**。脚本将 `.sm` → `.o` → **`ar`** → **MANIFEST + IMAGE(.a)**。供应用 CNAF `requires=` 占位；内核当前不加载 `.cnafl`。
+  * **库语义（非可执行 ELF）**：slimec 使用 **`--target cnos --emit static-lib`** 生成**无 `_start`** 的 NASM，再 `nasm -felf64` + `ar`；默认可执行程序仍为 **`--emit exe`**（与 **`cnos-slime-compile.sh`** 一致）。
 
 ## 运行 CNAF（内核已实现）
 
-构建时会把 **`pack-cnaf.py`** 生成的首个演示包 **`demo_cnaf.bin`**（内容来自 **`user/hello.elf`** 写入 CNAF IMAGE 节）链进 **`kernel.elf`**。启动后在 Shell 输入 **`cnrun`**（无参数）即可解析 CNAF、提取 ELF 并在 ring 3 运行——这是 **首个端到端 CNAF 路径**。
+构建时会把 **`pack-cnaf.py`** 生成的首个演示包 **`demo_cnaf.bin`**（IMAGE 为 **CNAB**：默认 C **`hello.cnab`**；若 **`CHASEROS_WITH_SLIME_USER=ON`** 则为 Slime **`cnafloader.cnab`**）链进 **`kernel.elf`**。启动后在 Shell 输入 **`cnrun`**（无参数）即可解析 CNAF、装入 CNAB 并在 ring 3 跳转入口。
 若已有挂载的 ext2，可将宿主生成的 **`*.cnaf`** 拷入卷根，执行 **`cnrun <文件名>`**。
 
 ## 拉取上游开发

@@ -1,6 +1,7 @@
-/* kernel/fs/vfs.c - VFS 实现：根挂载位 + ext2 后端 */
+/* kernel/fs/vfs.c - VFS 实现：根挂载位 + 多后端（ext2 块卷 + /dev 伪 FS） */
 
 #include "fs/vfs.h"
+#include "fs/vfs_devfs.h"
 #include "fs/chaseros/porting.h"
 #include "fs/chaseros/chaseros_ext2_vol.h"
 #include "user_fd.h"
@@ -108,7 +109,14 @@ int vfs_ls(const char *path) {
     if (!p || p[0] == '\0') {
         p = "/";
     }
-    if (chaseros_ext2_ls_at(v, p) != 0) {
+    char norm[256];
+    if (chaseros_path_normalize(p, norm, sizeof norm) != 0) {
+        return VFS_ERR_IO;
+    }
+    if (vfs_devfs_handles(norm)) {
+        return vfs_devfs_ls(norm);
+    }
+    if (chaseros_ext2_ls_at(v, norm) != 0) {
         return VFS_ERR_IO;
     }
     return VFS_ERR_NONE;
@@ -119,7 +127,14 @@ int vfs_mkdir(const char *path) {
     if (!v) {
         return VFS_ERR_NOTMOUNTED;
     }
-    if (chaseros_ext2_mkdir(v, path) != 0) {
+    char norm[256];
+    if (chaseros_path_normalize(path, norm, sizeof norm) != 0) {
+        return VFS_ERR_IO;
+    }
+    if (vfs_devfs_handles(norm)) {
+        return vfs_devfs_mkdir(norm);
+    }
+    if (chaseros_ext2_mkdir(v, norm) != 0) {
         return VFS_ERR_IO;
     }
     return VFS_ERR_NONE;
@@ -134,6 +149,9 @@ int vfs_is_directory(const char *path) {
     if (chaseros_path_normalize(path, norm, sizeof norm) != 0) {
         return 0;
     }
+    if (vfs_devfs_handles(norm)) {
+        return vfs_devfs_is_directory(norm);
+    }
     return chaseros_ext2_path_is_dir(v, norm);
 }
 
@@ -143,7 +161,14 @@ int vfs_read_file_range(const char *name, uint32_t offset, void *buf, size_t buf
     if (!v) {
         return VFS_ERR_NOTMOUNTED;
     }
-    if (chaseros_ext2_read_file_range(v, name, offset, buf, buf_sz, out_len) != 0) {
+    char norm[256];
+    if (chaseros_path_normalize(name, norm, sizeof norm) != 0) {
+        return VFS_ERR_IO;
+    }
+    if (vfs_devfs_handles(norm)) {
+        return vfs_devfs_read_range(norm, offset, buf, buf_sz, out_len);
+    }
+    if (chaseros_ext2_read_file_range(v, norm, offset, buf, buf_sz, out_len) != 0) {
         return VFS_ERR_IO;
     }
     return VFS_ERR_NONE;
@@ -158,7 +183,14 @@ int vfs_write_file(const char *name, const char *data, size_t len) {
     if (!v) {
         return VFS_ERR_NOTMOUNTED;
     }
-    if (chaseros_ext2_write_file(v, name, data, len) != 0) {
+    char norm[256];
+    if (chaseros_path_normalize(name, norm, sizeof norm) != 0) {
+        return VFS_ERR_IO;
+    }
+    if (vfs_devfs_handles(norm)) {
+        return vfs_devfs_write_file(norm, data, len);
+    }
+    if (chaseros_ext2_write_file(v, norm, data, len) != 0) {
         return VFS_ERR_IO;
     }
     return VFS_ERR_NONE;
@@ -172,8 +204,15 @@ int vfs_stat(const char *path, vfs_stat_t *st) {
     if (!path || !st) {
         return VFS_ERR_IO;
     }
+    char norm[256];
+    if (chaseros_path_normalize(path, norm, sizeof norm) != 0) {
+        return VFS_ERR_IO;
+    }
+    if (vfs_devfs_handles(norm)) {
+        return vfs_devfs_stat(norm, st);
+    }
     uint32_t sz = 0;
-    if (chaseros_ext2_stat_file(v, path, &sz) != 0) {
+    if (chaseros_ext2_stat_file(v, norm, &sz) != 0) {
         return VFS_ERR_NOENT;
     }
     st->ino = 0;

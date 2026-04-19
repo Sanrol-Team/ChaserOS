@@ -1,15 +1,16 @@
-CNAF 用户态 ELF（ANAF 交叉工具链）
-================================
+CNAF / CNAFL 用户态 ELF（ChaserOS 交叉工具链）
+============================================
 
-cnaf_spec.h 约定：IMAGE 节可为 ELF64（裸机、无宿主 libc）。本目录使用与内核相同的
-x86_64-elf ANAF 工具链，通过 cmake/cnaf-anaf.cmake 追加 freestanding / -nostdlib 标志。
+`kernel/fs/cnaf/cnaf_spec.h` 约定：CNAF App 的 IMAGE 节载荷为 **CNAB**（内核不解析 ELF）；本目录仍用与内核相同的
+**x86_64-elf** 工具链，通过 `cmake/cnaf-anaf.cmake` 追加 freestanding / -nostdlib 标志。
 
-注意：cnaf-anaf.cmake 仅用于本 user/ 子工程；配置内核请仍用 cmake/x86_64-elf.cmake 或 cmake/anaf.cmake。
+注意：`cnaf-anaf.cmake` 仅用于本 `user/` 子工程；配置内核请仍用 `cmake/x86_64-elf.cmake`。
 
-等价 CMake 别名（文档名「GCC For CNOS」）：
+等价 CMake 别名（文档名「GCC For CNOS / ChaserOS App」）：
   cmake/gcc-for-cnos.cmake
 
-步骤：
+步骤
+----
 
 0) （推荐）在 Linux 上一键安装「CNOS App」工具链（GCC + CNAF 头 + CMake 副本 + 环境脚本）
    bash scripts/build-cnos-app-linux-toolchain.sh "$HOME/opt/cnos-app"
@@ -22,19 +23,35 @@ x86_64-elf ANAF 工具链，通过 cmake/cnaf-anaf.cmake 追加 freestanding / -
 2) 仅编译 CNAF 用户示例
    bash scripts/build-cnaf-user.sh
 
-   或手写（**当前目录须为 CNOS 仓库根**；工具链路径建议用绝对路径，部分 CMake 将相对路径
-   解析到 **-B** 构建目录而非当前目录）：
+   或手写（**当前目录须为仓库根**；工具链路径建议用绝对路径）：
    cmake -S user -B build-cnaf-user -DCMAKE_TOOLCHAIN_FILE="$PWD/cmake/cnaf-anaf.cmake"
    cmake --build build-cnaf-user
 
-产物：build-cnaf-user/hello.elf、build-cnaf-user/minimal.elf（见 **user/README.txt**）
+产物：`build-cnaf-user/hello.elf`、`build-cnaf-user/minimal.elf`（见 **user/README.txt**）
 
-后续可由打包工具写入 .cnaf 的 IMAGE 节（并配 MANIFEST 节），参见 kernel/fs/cnaf/cnaf_spec.h。
+3) 将用户 ELF 转为 CNAB 再打成 CNAF v0.2（MANIFEST + IMAGE）
+   x86_64-elf-objcopy -O binary build-cnaf-user/hello.elf /tmp/hello_raw.bin
+   python3 scripts/wrap-cnab.py --load-base 0x400000 --entry-rva 0xe0 /tmp/hello_raw.bin /tmp/hello.cnab
+   python3 scripts/pack-cnaf.py mybundle.cnaf /tmp/hello.cnab
 
-Slime 用户态（与 STD 并行开发）
--------------------------------
+   （`entry-rva` 须与链接脚本中 `_start` 相对 `load_base` 的偏移一致；Slime 一键脚本见下。）
 
-  * 标准库树：**integrations/slime-for-cnos/std**（设置 **SLIME_PATH** 指向该目录）。
-  * 一键环境（仓库根）：**`source scripts/cnos-slime-dev-env.sh`**（等价于导出 **CNOS_ROOT**/**SLIME_PATH**）。
-  * **.sm → .elf**：**scripts/cnos-slime-compile.sh**（需 **nasm**、**x86_64-elf-ld**，运行时桩见 **user/cnos-rt/**）。
-  * 演示：**user/slime-demo.sm**、**user/syscall-errno-demo.sm**（**EBADF**）；说明：**integrations/slime-for-cnos/std/README.txt**、**toolchains/slime-for-cnos/README.txt**。
+内核 `cnrun <path.cnaf>`：**流式装载**——只缓冲 CNAF 节表（至 `header_bytes`），IMAGE 节经
+**VFS 分段读** + **CNAB 头校验与平铺拷贝**，不解析 ELF。
+
+Slime → ELF → CNAF / CNAFL（交叉编译链）
+----------------------------------------
+
+  * **标准库树**：**integrations/slime-for-chaseros/std**（设置 **SLIME_PATH** 指向该目录）。
+  * 一键环境（仓库根）：**`source scripts/cnos-slime-dev-env.sh`**（导出 **CHASEROS_ROOT** / **SLIME_PATH**；
+    若脚本仍写旧名，可手动 `export SLIME_PATH=$PWD/integrations/slime-for-chaseros/std`）。
+  * **.sm → .elf**：**scripts/cnos-slime-compile.sh**（需 **slimec** `--target cnos`、**nasm**、**x86_64-elf-ld**，
+    运行时桩：**user/chaseros-rt/chaseros_syscalls.asm**）。
+  * **.sm → 静态库 / CNAFL**：**slimec** **`--target cnos --emit static-lib`**（无 `_start`），再配合 **scripts/cnos-slimec-lib.sh** 或自建 `nasm -felf64` + **`ar`** 流程。
+  * **.sm → .cnaf 一步**：**scripts/slime-pack-cnaf.sh**（ELF → objcopy raw → **wrap-cnab.py** → **pack-cnaf.py**）。
+    示例：
+      bash scripts/slime-pack-cnaf.sh user/slime-demo.sm /tmp/demo.cnaf
+  * 演示源码：**user/slime-demo.sm** 等；说明：**integrations/slime-for-chaseros/std/README.txt**。
+
+CNAFL：打包工具与头字段相同，`payload_kind` / `lib_kind` 由 **pack-cnaf.py** 扩展或后续脚本生成；
+当前 **pack-cnaf.py** 以 App 包为主，库包可手工按 `cnaf_spec.h` 节表拼装或后续加脚本。

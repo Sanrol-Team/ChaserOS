@@ -1,0 +1,13 @@
+[package]
+name = "chaseros_ahci_rust"
+version = "0.1.0"
+edition = "2026"
+description = "ChaserOS 内核 AHCI（SATA）— 以 staticlib 链入 kernel.elf，与 Slime/slimec 共用 cargo 工具链"
+
+[lib]
+crate-type = ["staticlib"]
+
+[profile.release]
+panic = "abort"
+opt-level = "z"
+lto = true

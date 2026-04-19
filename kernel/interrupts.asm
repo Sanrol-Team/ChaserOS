@@ -83,7 +83,6 @@ IRQ 14, 46
 IRQ 15, 47
 
 extern isr_handler
-extern get_current_process
 
 isr_common_stub:
     ; 保存所有通用寄存器 (rax to r15)
@@ -103,18 +102,11 @@ isr_common_stub:
     push r14
     push r15
 
-    ; --- 保存当前进程的栈指针 ---
-    call get_current_process
-    ; RAX 现在指向当前 proc_t 结构
-    mov [rax + 16], rsp     ; 假设 rsp 在 proc_t 偏移 16 字节处 (pid=8, state=8)
-
     ; 将当前栈指针作为参数传递给 C 处理程序
+    ; 注意：勿把 RSP 写入 proc_t 再在返回时从「新的」current 恢复。IRQ0 里会 schedule()，
+    ; current_task_idx 可能已变，若用另一任务的 proc->rsp 恢复会栈错乱并三重故障 / 直接退出。
     mov rdi, rsp
     call isr_handler
-
-    ; --- 恢复(可能已切换)进程的栈指针 ---
-    call get_current_process
-    mov rsp, [rax + 16]
 
     ; 恢复所有通用寄存器
     pop r15

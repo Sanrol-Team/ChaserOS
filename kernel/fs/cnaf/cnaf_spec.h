@@ -16,7 +16,10 @@
 
 /*
  * CNAF — ChaserOS Application File（.cnaf）
- *   可部署的「应用单元」：清单 + 可选资源包 + 主可加载映像（推荐 ELF64，CNOS 子集 ABI）。
+ *   可部署的「应用单元」：清单 + 可选资源包 + 主可加载映像。
+ *   内核 `cnrun` / 内嵌 demo 路径下，IMAGE 节载荷为 **CNAB**（见 kernel/fs/cnaf/cnab.h）：
+ *   平铺机器码 + 头描述 load_base / entry_rva；**不解析 ELF**。宿主工具链可仍用 ELF 链接，
+ *   再以 objcopy + wrap-cnab.py 转为 CNAB 后打包。
  *
  * CNAFL — ChaserOS Application Files Library（.cnafl）
  *   可分发「库单元」：清单 + 一个可链接/可加载映像（静态归档 a 或动态共享 ELF .so 占位）。
@@ -80,7 +83,7 @@ _Static_assert(sizeof(cnaf_file_header_t) == 36, "cnaf_file_header size");
 typedef enum {
     CNAF_SECTION_MANIFEST   = 1, /* UTF-8 文本清单，见下「清单格式」 */
     CNAF_SECTION_RESOURCES  = 2, /* 可选；tar/zip 或 ChaserOS 自定义资源包（由 manifest 指明子格式） */
-    CNAF_SECTION_IMAGE      = 3, /* 主载荷：ELF64 可执行/动态库，或静态 .a（仅 CNAFL） */
+    CNAF_SECTION_IMAGE      = 3, /* CNAF App：CNAB（内核装载）；CNAFL：.a 或 ELF .so 等 */
     CNAF_SECTION_DEBUG      = 4, /* 可选；DWARF 等，加载器默认忽略 */
 } cnaf_section_type_t;
 
@@ -132,7 +135,8 @@ typedef struct cnaf_section_table {
  *   version = 1.2.3             # 语义化版本字符串（工具链约束，内核可只作字符串比较）
  *
  * CNAF 专用：
- *   entry_symbol = _start       # ELF 入口符号名；缺省时加载器可用 ELF e_entry
+ *   image_kind = cnab           # 建议显式声明（内核只认 CNAB IMAGE）
+ *   entry_symbol = _start       # 文档/工具用；实际入口由 CNAB entry_rva + load_base 决定
  *   requires = cnui@1.0, net@2  # 依赖 CNAFL，逗号分隔，见下「依赖语法」
  *
  * CNAFL 专用：
@@ -147,6 +151,7 @@ typedef struct cnaf_section_table {
 #define CNAF_MANIFEST_KEY_BUNDLE_ID      "bundle_id"
 #define CNAF_MANIFEST_KEY_NAME           "name"
 #define CNAF_MANIFEST_KEY_VERSION        "version"
+#define CNAF_MANIFEST_KEY_IMAGE_KIND     "image_kind"
 #define CNAF_MANIFEST_KEY_ENTRY_SYMBOL   "entry_symbol"
 #define CNAF_MANIFEST_KEY_REQUIRES       "requires"
 
@@ -172,7 +177,8 @@ typedef enum {
 /* -------------------------------------------------------------------------- */
 
 /*
- * CNAF + IMAGE：通常为 ET_EXEC 或 ET_DYN（位置无关可执行），64 位 ELF，ChaserOS 目标三元组 x86_64-none / 自定义。
+ * CNAF + IMAGE（内核加载路径）：**CNAB** 裸映像。构建侧可先用 x86_64-elf 链出 ELF，再
+ *   objcopy -O binary → wrap-cnab.py → pack-cnaf.py。
  * CNAFL + static：IMAGE 为 .a（通用 ar，成员为 ELF64 .o）。
  * CNAFL + shared：IMAGE 为 ET_DYN，SONAME 应与 manifest soname 一致（或由加载器校验）。
  */
@@ -199,7 +205,7 @@ typedef enum {
 /*
  * Phase A — 头校验：魔数、fmt、payload_kind；cnaf_probe_header。
  * Phase B — VFS：从路径打开 .cnaf/.cnafl，校验头与（可选）节表一致性。
- * Phase C — 用户态加载器：解析 MANIFEST + IMAGE，ELF PT_LOAD 映射。
+ * Phase C — 内核/用户态加载器：解析 MANIFEST + IMAGE；App 映像按 CNAB 平铺装入（非 ELF）。
  * Phase D — requires：按 lib_name/abi 解析 CNAFL，共享库符号解析与重定位。
  *
  * 与 libext2fs：仅通过 VFS 读文件；CNAF 不依赖磁盘 inode 布局。

@@ -10,6 +10,7 @@
 #include "power.h"
 #include "console.h"
 #include "sysinfo.h"
+#include "sched.h"
 #include "pmm.h"
 #include <stdint.h>
 #include <stddef.h>
@@ -32,6 +33,11 @@ static char g_cwd[256] = "/";
 static void shell_cwd_reset(void) {
     g_cwd[0] = '/';
     g_cwd[1] = '\0';
+    chaseros_user_cwd_reset();
+}
+
+const char *shell_get_cwd(void) {
+    return g_cwd;
 }
 
 static int shell_resolve(const char *rel, char *out, size_t outsz) {
@@ -122,6 +128,60 @@ void shell_handle_input(char c) {
     }
 }
 
+static void shell_resolution_cmd(const char *args) {
+    const char *r = args;
+    skip_sp(&r);
+    if (*r == '\0') {
+        if (!console_is_framebuffer()) {
+            puts("resolution: VGA text — 像素模式请编辑 iso/boot/grub.cfg 中 set gfxpayload= 后重建 ISO 重启。\n");
+            puts("  帧缓冲模式下: resolution scale <1-10> | resolution auto | resolution help\n");
+            return;
+        }
+        int w = 0, h = 0;
+        console_fb_dims(&w, &h);
+        puts("Framebuffer: ");
+        puts_dec((uint64_t)(unsigned)w);
+        puts(" x ");
+        puts_dec((uint64_t)(unsigned)h);
+        puts("  font scale: ");
+        puts_dec((uint64_t)(unsigned)console_get_fb_font_scale());
+        puts(" (1-10；档位非硬件像素，见 resolution help)\n");
+        return;
+    }
+    char w0[20];
+    int wi = 0;
+    while (*r && *r != ' ' && wi < (int)sizeof(w0) - 1) {
+        w0[wi++] = *r++;
+    }
+    w0[wi] = '\0';
+    skip_sp(&r);
+    if (strcmp(w0, "help") == 0) {
+        puts("resolution              当前像素与字模档位\n");
+        puts("resolution auto         字模按屏高自动\n");
+        puts("resolution scale <1-10> 字模变大/变小（位图字体；矢量模块启用时无效）\n");
+        puts("硬件分辨率：改 iso/boot/grub.cfg 的 set gfxpayload=WxHx32，cmake --build 后换 ISO 重启。\n");
+        return;
+    }
+    if (strcmp(w0, "auto") == 0) {
+        console_set_fb_font_scale(0);
+        puts("resolution: font scale auto\n");
+        return;
+    }
+    if (strcmp(w0, "scale") == 0) {
+        uint64_t sc = 0;
+        if (parse_u64(r, &sc) != 0 || sc < 1ull || sc > 10ull) {
+            puts("resolution: usage: resolution scale <1-10>\n");
+            return;
+        }
+        console_set_fb_font_scale((int)sc);
+        puts("resolution: font scale ");
+        puts_dec(sc);
+        puts("\n");
+        return;
+    }
+    puts("resolution: unknown subcommand (try resolution help)\n");
+}
+
 void shell_execute(const char *cmd) {
     char buf[MAX_COMMAND_LEN];
     size_t i = 0;
@@ -170,14 +230,18 @@ void shell_execute(const char *cmd) {
         puts("  atapi inquiry <0|1> - SCSI INQUIRY (CD-ROM ATAPI)\n");
         puts("  atapi read <0|1> <lba> - READ(10) one 2048-byte sector (hex dump head)\n");
         puts("  attach ide <0|1>  - Use IDE master/slave as volume\n");
+#ifdef CHASEROS_HAVE_AHCI_RUST
+        puts("  attach ahci <0-31> - Use AHCI SATA port as volume (AHCI build)\n");
+#endif
         puts("  detach            - Unmount VFS if needed, release volume\n");
         puts("  lspci             - PCI devices\n");
-        puts("  ps                - Fake process list\n");
+        puts("  ps                - Hybrid scheduler task table + stats\n");
         puts("  hello             - Run embedded ring-3 user demo (C)\n");
-        puts("  cnrun             - Run embedded CNAF demo (MANIFEST + hello.elf IMAGE)\n");
+        puts("  cnrun             - Run embedded CNAF (no args; IMAGE: C hello or Slime CNAFLOADER)\n");
         puts("  cnrun <file>      - Run .cnaf (cwd-relative or absolute; max ~2 MiB)\n");
         puts("  slime             - Run embedded Slime user demo (requires CHASEROS_WITH_SLIME_USER)\n");
         puts("  systeminfo        - OS / RAM / display / font / IDE / CD-ROM\n");
+        puts("  resolution [help|auto|scale N] - 帧缓冲下调整字模档位；像素模式改 grub.cfg\n");
     } else if (strcmp(verb, "clear") == 0) {
         console_clear();
     } else if (strcmp(verb, "mem") == 0) {
@@ -241,6 +305,12 @@ void shell_execute(const char *cmd) {
             puts(", ");
             puts_dec((uint64_t)v->size_bytes);
             puts(" bytes\n");
+        } else if (v->type == CHASEROS_VOL_AHCI) {
+            puts("Volume: AHCI port ");
+            puts_dec((uint64_t)v->ahci_port);
+            puts(", ");
+            puts_dec((uint64_t)v->size_bytes);
+            puts(" bytes\n");
         }
         puts("VFS root: ");
         puts(vfs_is_mounted() ? "mounted (ext2)\n" : "not mounted\n");
@@ -249,7 +319,11 @@ void shell_execute(const char *cmd) {
         if (mr == VFS_ERR_NONE) {
             puts("mount: ext2 root ok\n");
         } else if (mr == VFS_ERR_NOENT) {
+#ifdef CHASEROS_HAVE_AHCI_RUST
+            puts("mount: no volume (mkdisk / attach ide / attach ahci first)\n");
+#else
             puts("mount: no volume (mkdisk / attach ide first)\n");
+#endif
         } else {
             puts("mount: failed\n");
         }
@@ -279,7 +353,11 @@ void shell_execute(const char *cmd) {
         shell_cwd_reset();
         int fr = vfs_format();
         if (fr == VFS_ERR_NOENT) {
+#ifdef CHASEROS_HAVE_AHCI_RUST
+            puts("initdisk: no volume (mkdisk / attach ide / attach ahci first)\n");
+#else
             puts("initdisk: no volume (mkdisk / attach ide first)\n");
+#endif
             return;
         }
         if (fr != VFS_ERR_NONE) {
@@ -324,6 +402,7 @@ void shell_execute(const char *cmd) {
             ci++;
         }
         g_cwd[ci] = '\0';
+        chaseros_user_set_cwd(g_cwd);
     } else if (strcmp(verb, "mkdir") == 0) {
         skip_sp(&p);
         if (*p == '\0') {
@@ -451,6 +530,15 @@ void shell_execute(const char *cmd) {
             for (k = 0; k < 40 && m[k] != ' '; k++) {
                 putchar(m[k]);
             }
+            if (cls == IDE_CLASS_ATA) {
+                uint32_t sec = 0;
+                puts("  sectors=");
+                if (ide_capacity_sectors((uint8_t)d, &sec) == 0) {
+                    puts_dec((uint64_t)sec);
+                } else {
+                    puts("?");
+                }
+            }
             putchar('\n');
         }
     } else if (strcmp(verb, "atapi") == 0) {
@@ -552,17 +640,40 @@ void shell_execute(const char *cmd) {
             } else {
                 puts("\n");
             }
-        } else {
+        }
+#ifdef CHASEROS_HAVE_AHCI_RUST
+        else if (strncmp_local(p, "ahci", 4) == 0 && (p[4] == ' ' || p[4] == '\0')) {
+            p += 4;
+            skip_sp(&p);
+            uint64_t ap = 0;
+            if (parse_u64(p, &ap) != 0 || ap > 31u) {
+                puts("attach: usage attach ahci <0-31>\n");
+                return;
+            }
+            if (chaseros_vol_attach_ahci((uint32_t)ap) != 0) {
+                puts("attach: AHCI failed (no ABAR, disk, or size too small)\n");
+                return;
+            }
+            shell_cwd_reset();
+            puts("attach: AHCI volume ready");
+            if (vfs_mount_root() == VFS_ERR_NONE) {
+                puts(", VFS mounted\n");
+            } else {
+                puts("\n");
+            }
+        }
+#endif
+        else {
+#ifdef CHASEROS_HAVE_AHCI_RUST
+            puts("attach: use 'attach ide <0|1>' or 'attach ahci <0-31>'\n");
+#else
             puts("attach: only 'attach ide <0|1>' supported\n");
+#endif
         }
     } else if (strcmp(verb, "lspci") == 0) {
         pci_list_devices();
     } else if (strcmp(verb, "ps") == 0) {
-        puts("Simulation Process List:\n");
-        puts(" PID | State | Name\n");
-        puts("-----|-------|------\n");
-        puts(" 0   | R     | Kernel\n");
-        puts(" 1   | R     | Shell\n");
+        sched_print_task_table();
     } else if (strcmp(verb, "hello") == 0) {
         user_run_embedded_hello();
     } else if (strcmp(verb, "cnrun") == 0) {
@@ -582,38 +693,17 @@ void shell_execute(const char *cmd) {
             puts("cnrun: invalid path\n");
             return;
         }
-        vfs_stat_t st;
-        int sr = vfs_stat(cresolved, &st);
-        if (sr == VFS_ERR_NOTMOUNTED) {
+        if (!vfs_is_mounted()) {
             puts("cnrun: VFS not mounted (try: mount)\n");
             return;
         }
-        if (sr != VFS_ERR_NONE) {
-            puts("cnrun: file not found\n");
-            return;
-        }
-        if (st.size == 0 || st.size > CNRUN_MAX_BYTES) {
-            puts("cnrun: empty or too large\n");
-            return;
-        }
-        uint64_t pages64 = ((uint64_t)st.size + (uint64_t)PAGE_SIZE - 1ULL) / (uint64_t)PAGE_SIZE;
-        uint8_t *blob = (uint8_t *)pmm_alloc_contiguous_pages(pages64);
-        if (!blob) {
-            puts("cnrun: alloc failed\n");
-            return;
-        }
-        size_t got = 0;
-        int rr = vfs_read_file_range(cresolved, 0u, blob, (size_t)st.size, &got);
-        if (rr != VFS_ERR_NONE || got != st.size) {
-            pmm_free_contiguous(blob, pages64);
-            puts("cnrun: read failed\n");
-            return;
-        }
-        user_run_cnaf_from_owned_pages(blob, got, pages64, cresolved);
+        user_run_cnaf_from_path_streaming(cresolved);
     } else if (strcmp(verb, "slime") == 0) {
         user_run_embedded_slime_hello();
     } else if (strcmp(verb, "systeminfo") == 0) {
         sysinfo_print();
+    } else if (strcmp(verb, "resolution") == 0) {
+        shell_resolution_cmd(p);
     } else if (cmd[0] != '\0') {
         puts("Unknown command: ");
         puts(cmd);

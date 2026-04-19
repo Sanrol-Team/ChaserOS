@@ -9,6 +9,10 @@
 void ttfont_reset(void);
 void ttfont_init_for_height(int screen_height);
 
+/** 位图字体档位 1–10；在 ttfont_init_for_height 之后调用可覆盖自动计算 */
+void ttfont_set_bitmap_scale(int scale);
+int ttfont_get_bitmap_scale(void);
+
 /* 返回 0 表示成功启用矢量字体（需编译时 CHASEROS_HAVE_STBTT + 模块数据有效） */
 int ttfont_init_stb(const void *font_data, size_t font_size);
 

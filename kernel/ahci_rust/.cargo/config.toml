@@ -1,0 +1,3 @@
+# 在本目录执行 `cargo build --release` 时使用裸机 triple（须 rustup target add x86_64-unknown-none）
+[build]
+target = "x86_64-unknown-none"

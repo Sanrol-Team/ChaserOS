@@ -1,4 +1,4 @@
-/* kernel/process.h - 进程/线程控制块 (PCB/TCB) */
+/* kernel/process.h - PCB/TCB（混合内核：与 sched.h 协作，非纯微内核外迁模型） */
 
 #ifndef PROCESS_H
 #define PROCESS_H
@@ -52,5 +52,9 @@ void process_ipc_wake_from_receive(proc_t *p);
 void process_ipc_wake_after_reply(proc_t *peer);
 
 void schedule(void);
+
+/** 任务表首指针（长度 MAX_TASKS），供调度观测与 `ps` */
+proc_t *process_tasks(void);
+uint32_t process_sched_ready_count(void);
 
 #endif

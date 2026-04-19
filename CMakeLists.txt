@@ -21,6 +21,9 @@ set(KERNEL_FS_CNAF ${CMAKE_SOURCE_DIR}/kernel/fs/cnaf)
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
+get_filename_component(_CHASEROS_GCC_DIR "${CMAKE_C_COMPILER}" DIRECTORY)
+find_program(CHASEROS_OBJCOPY NAMES x86_64-elf-objcopy HINTS "${_CHASEROS_GCC_DIR}" REQUIRED)
+
 # e2fsprogs 整树在 kernel/fs/lib 等目录；ChaserOS 只链接下列 .c，按需再追加 lib/ext2fs/*.c（见 kernel/fs/README）
 
 set(KERNEL_ASM
@@ -28,6 +31,12 @@ set(KERNEL_ASM
     kernel/interrupts.asm
     kernel/gdt_load.asm
 )
+
+# 可选：Rust staticlib AHCI（须: rustup target add x86_64-unknown-none）
+option(CHASEROS_WITH_AHCI_RUST "链入 kernel/ahci_rust（cargo → libchaseros_ahci_rust.a）" OFF)
+set(CHASEROS_AHCI_RUST_LIB "${CMAKE_BINARY_DIR}/ahci_rust/x86_64-unknown-none/release/libchaseros_ahci_rust.a")
+# Slime 内建 slimec 与 AHCI 共用同一 cargo；可 cmake -DCHASEROS_CARGO=/path/to/cargo
+set(CHASEROS_CARGO "" CACHE FILEPATH "cargo 可执行文件（留空则从 PATH 查找）")
 
 set(KERNEL_C
     kernel/console.c
@@ -45,6 +54,7 @@ set(KERNEL_C
     kernel/ipc.c
     kernel/hybrid_ipc.c
     kernel/fs/vfs.c
+    kernel/fs/vfs_devfs.c
     kernel/fs/chaseros/chaseros_alloc.c
     kernel/fs/chaseros/chaseros_ext2.c
     kernel/fs/cnaf/cnaf_validate.c
@@ -57,22 +67,43 @@ set(KERNEL_C
     kernel/drivers/ide.c
     kernel/fs/chaseros/chaseros_ext2_vol.c
     kernel/process.c
+    kernel/sched.c
     kernel/elf_load.c
+    kernel/fs/cnaf/cnab_load.c
     kernel/user.c
     kernel/user_fd.c
 )
+
+if(CHASEROS_WITH_AHCI_RUST)
+    list(APPEND KERNEL_C kernel/drivers/ahci_pci.c)
+endif()
 
 set(USER_HELLO_ELF ${CMAKE_BINARY_DIR}/user/hello.elf)
 set(USER_HELLO_OBJ ${CMAKE_BINARY_DIR}/hello_elf.o)
 set(DEMO_CNAF_BIN ${CMAKE_BINARY_DIR}/demo_cnaf/demo.cnaf)
 set(DEMO_CNAF_OBJ ${CMAKE_BINARY_DIR}/demo_cnaf_obj.o)
+set(USER_HELLO_RAW ${CMAKE_BINARY_DIR}/user/hello_raw.bin)
+set(USER_HELLO_CNAB ${CMAKE_BINARY_DIR}/user/hello.cnab)
+# 内嵌 demo_cnaf.bin 的 IMAGE：CNAB（非 ELF）；默认由 C hello 经 objcopy+wrap-cnab 生成
+set(CHASEROS_DEMO_CNAF_PAYLOAD ${USER_HELLO_CNAB})
 
 # 可选：嵌入 Slime（slimec --target cnos）编译的 hello_sm.elf；默认在仓库内 cargo 编译 slimec（见 CHASEROS_BUILD_SLIMEC）
-option(CHASEROS_WITH_SLIME_USER "嵌入 Slime 用户态 hello_sm.elf（需 nasm；slimec 见 CHASEROS_BUILD_SLIMEC / CHASEROS_SLIMEC）" OFF)
+option(CHASEROS_WITH_SLIME_USER "嵌入 Slime 用户态 hello_sm.elf（需 nasm；slimec 见 CHASEROS_BUILD_SLIMEC / CHASEROS_SLIMEC）；并以内嵌 CNAFLOADER（cnafloader.sm）替代 C hello 作为无参 cnrun 的 demo 包 IMAGE" OFF)
 set(CHASEROS_SLIMEC "" CACHE FILEPATH "仅在 CHASEROS_BUILD_SLIMEC=OFF 时使用：宿主 slimec 路径；留空则在 PATH 中查找")
 set(CHASEROS_SLIME_SRC "${CMAKE_SOURCE_DIR}/integrations/slime-for-chaseros/upstream/slime" CACHE PATH "Slime 源码根目录（须含 Cargo.toml；slimec 须支持 --target cnos）")
 option(CHASEROS_BUILD_SLIMEC "在 CMake 构建内执行 cargo build 生成 slimec（写入 build/slime-tools），不依赖 PATH" ON)
 set(KERNEL_EXTRA_OBJ "")
+
+# CACHE 中 CHASEROS_CARGO 可为空；勿用 if(CHASEROS_CARGO) 判断（空 FILEPATH 仍可能为真）
+set(CHASEROS_CARGO_FOR_BUILD "")
+if("${CHASEROS_CARGO}" STREQUAL "")
+    if(CHASEROS_WITH_AHCI_RUST OR (CHASEROS_WITH_SLIME_USER AND CHASEROS_BUILD_SLIMEC))
+        find_program(CHASEROS_CARGO_EXE NAMES cargo REQUIRED PATHS /usr/bin /usr/local/bin "$ENV{HOME}/.cargo/bin")
+        set(CHASEROS_CARGO_FOR_BUILD "${CHASEROS_CARGO_EXE}")
+    endif()
+else()
+    set(CHASEROS_CARGO_FOR_BUILD "${CHASEROS_CARGO}")
+endif()
 
 add_custom_command(
     OUTPUT ${USER_HELLO_ELF}
@@ -93,17 +124,13 @@ add_custom_command(
     VERBATIM
 )
 
-# 首个 CNAF 演示包：MANIFEST + IMAGE(hello.elf)，供内核 cnrun（无参数）解析并运行
 add_custom_command(
-    OUTPUT ${DEMO_CNAF_OBJ}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/demo_cnaf
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/pack-cnaf.py ${DEMO_CNAF_BIN} ${USER_HELLO_ELF}
-            --bundle-id chaseros.demo.first_cnaf --name FirstCNAF --version 0.1.0
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${DEMO_CNAF_BIN} ${CMAKE_BINARY_DIR}/demo_cnaf.bin
-    COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_BINARY_DIR}
-            ${CMAKE_LINKER} -r -b binary -o demo_cnaf_obj.o demo_cnaf.bin
-    DEPENDS ${USER_HELLO_ELF} ${CMAKE_SOURCE_DIR}/scripts/pack-cnaf.py
-    COMMENT "打包并嵌入首个 CNAF（demo_cnaf.bin）"
+    OUTPUT ${USER_HELLO_CNAB}
+    COMMAND ${CHASEROS_OBJCOPY} -O binary ${USER_HELLO_ELF} ${USER_HELLO_RAW}
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/wrap-cnab.py --load-base 0x400000 --entry-rva 0xe0
+            ${USER_HELLO_RAW} ${USER_HELLO_CNAB}
+    DEPENDS ${USER_HELLO_ELF} ${CMAKE_SOURCE_DIR}/scripts/wrap-cnab.py
+    COMMENT "hello.elf → raw → CNAB（CNAF IMAGE 载荷，内核不解析 ELF）"
     VERBATIM
 )
 
@@ -113,6 +140,10 @@ if(CHASEROS_WITH_SLIME_USER)
     set(USER_SLIME_HELLO_OBJ ${CMAKE_BINARY_DIR}/hello_sm_elf.o)
     set(USER_SLIME_ASM ${CMAKE_BINARY_DIR}/user/hello_sm.asm)
     set(USER_SLIME_O ${CMAKE_BINARY_DIR}/user/hello_sm.o)
+    set(USER_SLIME_CNAFLOADER_ELF ${CMAKE_BINARY_DIR}/user/cnafloader.elf)
+    set(USER_SLIME_CNAFLOADER_CNAB ${CMAKE_BINARY_DIR}/user/cnafloader.cnab)
+    set(USER_SLIME_CNAFLOADER_ASM ${CMAKE_BINARY_DIR}/user/cnafloader.asm)
+    set(USER_SLIME_CNAFLOADER_O ${CMAKE_BINARY_DIR}/user/cnafloader.o)
     set(CHASEROS_SLIMEC_EXE "${CMAKE_BINARY_DIR}/slime-tools/slimec")
 
     set(CHASEROS_SLIMEC_DEP "")
@@ -120,12 +151,11 @@ if(CHASEROS_WITH_SLIME_USER)
         if(NOT EXISTS "${CHASEROS_SLIME_SRC}/Cargo.toml")
             message(FATAL_ERROR "未找到 Slime 源码（${CHASEROS_SLIME_SRC}/Cargo.toml）。请先: bash scripts/fetch-slime-upstream.sh\n或设置 -DCHASEROS_SLIME_SRC=含 cnos 目标的 Slime 源码路径。")
         endif()
-        find_program(CHASEROS_CARGO cargo REQUIRED)
         file(GLOB_RECURSE CHASEROS_SLIME_RUST_SOURCES CONFIGURE_DEPENDS "${CHASEROS_SLIME_SRC}/src/*.rs")
         add_custom_command(
             OUTPUT ${CHASEROS_SLIMEC_EXE}
             COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/slime-tools"
-            COMMAND ${CHASEROS_CARGO} build --manifest-path "${CHASEROS_SLIME_SRC}/Cargo.toml" --release
+            COMMAND ${CHASEROS_CARGO_FOR_BUILD} build --manifest-path "${CHASEROS_SLIME_SRC}/Cargo.toml" --release
             COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CHASEROS_SLIME_SRC}/target/release/slimec" "${CHASEROS_SLIMEC_EXE}"
             DEPENDS "${CHASEROS_SLIME_SRC}/Cargo.toml" ${CHASEROS_SLIME_RUST_SOURCES}
             COMMENT "cargo build slimec（ChaserOS 内建，源码: ${CHASEROS_SLIME_SRC}）"
@@ -162,7 +192,63 @@ if(CHASEROS_WITH_SLIME_USER)
         VERBATIM
     )
 
+    add_custom_command(
+        OUTPUT ${USER_SLIME_CNAFLOADER_ELF}
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/user"
+        COMMAND "${CHASEROS_SLIMEC_FOR_KERNEL}" --target cnos "${CMAKE_SOURCE_DIR}/user/cnafloader.sm" -o "${USER_SLIME_CNAFLOADER_ASM}"
+        COMMAND ${CHASEROS_NASM_FOR_SLIME} -felf64 "${USER_SLIME_CNAFLOADER_ASM}" -o "${USER_SLIME_CNAFLOADER_O}"
+        COMMAND ${CMAKE_LINKER} -nostdlib -T "${CMAKE_SOURCE_DIR}/user/user.ld" -o "${USER_SLIME_CNAFLOADER_ELF}" "${USER_SLIME_CNAFLOADER_O}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/user/cnafloader.sm" "${CMAKE_SOURCE_DIR}/user/user.ld" ${CHASEROS_SLIMEC_DEP}
+        COMMENT "构建 user/cnafloader.elf（Slime CNAFLOADER，供内嵌 demo_cnaf）"
+        VERBATIM
+    )
+
+    add_custom_command(
+        OUTPUT ${USER_SLIME_CNAFLOADER_CNAB}
+        COMMAND ${CHASEROS_OBJCOPY} -O binary ${USER_SLIME_CNAFLOADER_ELF}
+                ${CMAKE_BINARY_DIR}/user/cnafloader_raw.bin
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/wrap-cnab.py --load-base 0x400000 --entry-rva 0xe0
+                ${CMAKE_BINARY_DIR}/user/cnafloader_raw.bin ${USER_SLIME_CNAFLOADER_CNAB}
+        DEPENDS ${USER_SLIME_CNAFLOADER_ELF} ${CMAKE_SOURCE_DIR}/scripts/wrap-cnab.py
+        COMMENT "cnafloader.elf → CNAB（Slime 内嵌 demo IMAGE）"
+        VERBATIM
+    )
+
+    set(CHASEROS_DEMO_CNAF_PAYLOAD ${USER_SLIME_CNAFLOADER_CNAB})
     set(KERNEL_EXTRA_OBJ ${USER_SLIME_HELLO_OBJ})
+endif()
+
+# 首个 CNAF 演示包：MANIFEST + IMAGE（CNAB 载荷），供 cnrun（无参数）解析并运行
+add_custom_command(
+    OUTPUT ${DEMO_CNAF_OBJ}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/demo_cnaf
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/pack-cnaf.py ${DEMO_CNAF_BIN} ${CHASEROS_DEMO_CNAF_PAYLOAD}
+            --bundle-id chaseros.demo.first_cnaf --name CNAFLOADER --version 0.1.0
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${DEMO_CNAF_BIN} ${CMAKE_BINARY_DIR}/demo_cnaf.bin
+    COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_BINARY_DIR}
+            ${CMAKE_LINKER} -r -b binary -o demo_cnaf_obj.o demo_cnaf.bin
+    DEPENDS ${CHASEROS_DEMO_CNAF_PAYLOAD} ${CMAKE_SOURCE_DIR}/scripts/pack-cnaf.py
+    COMMENT "打包并嵌入首个 CNAF（demo_cnaf.bin）"
+    VERBATIM
+)
+
+if(CHASEROS_WITH_AHCI_RUST)
+    if("${CHASEROS_CARGO_FOR_BUILD}" STREQUAL "")
+        message(FATAL_ERROR "CHASEROS_WITH_AHCI_RUST 需要 cargo（安装 Rust 或 cmake -DCHASEROS_CARGO=/path/to/cargo）")
+    endif()
+    add_custom_command(
+        OUTPUT ${CHASEROS_AHCI_RUST_LIB}
+        COMMAND ${CMAKE_COMMAND} -E env "CARGO_TARGET_DIR=${CMAKE_BINARY_DIR}/ahci_rust" ${CHASEROS_CARGO_FOR_BUILD} build --release
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/kernel/ahci_rust
+        DEPENDS
+            ${CMAKE_SOURCE_DIR}/kernel/ahci_rust/Cargo.toml
+            ${CMAKE_SOURCE_DIR}/kernel/ahci_rust/src/lib.rs
+            ${CMAKE_SOURCE_DIR}/kernel/ahci_rust/.cargo/config.toml
+        COMMENT "cargo: libchaseros_ahci_rust.a（见 kernel/ahci_rust/.cargo/config.toml）"
+        VERBATIM
+    )
+    add_custom_target(chaseros_ahci_rust_a DEPENDS ${CHASEROS_AHCI_RUST_LIB})
+    message(STATUS "CHASEROS: AHCI Rust — rustup target add x86_64-unknown-none；cargo=${CHASEROS_CARGO_FOR_BUILD}")
 endif()
 
 add_executable(kernel.elf ${KERNEL_ASM} ${KERNEL_C} ${USER_HELLO_OBJ} ${DEMO_CNAF_OBJ} ${KERNEL_EXTRA_OBJ})
@@ -190,6 +276,12 @@ if(CHASEROS_WITH_SLIME_USER)
     target_compile_definitions(kernel.elf PRIVATE CHASEROS_HAVE_SLIME_USER=1)
 endif()
 
+if(CHASEROS_WITH_AHCI_RUST)
+    target_compile_definitions(kernel.elf PRIVATE CHASEROS_HAVE_AHCI_RUST=1)
+    add_dependencies(kernel.elf chaseros_ahci_rust_a)
+    target_link_libraries(kernel.elf PRIVATE ${CHASEROS_AHCI_RUST_LIB})
+endif()
+
 target_compile_definitions(kernel.elf PRIVATE CHASEROS_HYBRID_FS_VIA_IPC=1)
 
 target_link_options(kernel.elf PRIVATE
@@ -202,6 +294,10 @@ set_target_properties(kernel.elf PROPERTIES
 )
 
 find_program(GRUB_MKRESCUE NAMES grub-mkrescue grub2-mkrescue)
+
+if(GRUB_MKRESCUE AND NOT EXISTS "${CMAKE_SYSROOT}/usr/lib/grub/x86_64-efi")
+    message(WARNING "未找到 ${CMAKE_SYSROOT}/usr/lib/grub/x86_64-efi（需安装 grub2-efi-x64 等包）。grub-mkrescue 可能生成仅 BIOS 的 ISO，VMware UEFI 将无法从光盘启动。")
+endif()
 
 if(GRUB_MKRESCUE)
     add_custom_command(

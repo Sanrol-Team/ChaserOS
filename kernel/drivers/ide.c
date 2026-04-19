@@ -174,13 +174,43 @@ int ide_capacity_sectors(uint8_t drive, uint32_t *sectors_out) {
         return -1;
     }
     uint16_t buf[256];
-    if (ide_read_identify_words_cmd(drive, buf, ATA_CMD_IDENTIFY) != 0) {
-        return -1;
+    int ident_ok = (ide_read_identify_words_cmd(drive, buf, ATA_CMD_IDENTIFY) == 0);
+    uint64_t total = 0;
+
+    if (ident_ok) {
+        uint64_t n28 = (uint64_t)buf[60] | ((uint64_t)buf[61] << 16);
+        uint64_t n48 = (uint64_t)buf[100] | ((uint64_t)buf[101] << 16) | ((uint64_t)buf[102] << 32) |
+                       ((uint64_t)buf[103] << 48);
+        n48 &= 0xFFFFFFFFFFFFULL;
+        /* word 83/86 bit10: LBA48 支持（与 Linux ata_id_has_lba48 一致） */
+        int lba48 = (buf[83] & 0x0400u) && (buf[86] & 0x0400u);
+        if (lba48 && n48 > 0u) {
+            total = n48;
+        } else if (n28 > 0u && n28 <= 0x0FFFFFFFu) {
+            total = n28;
+        } else if (n48 > 0u) {
+            total = n48;
+        } else if (n28 > 0u) {
+            total = n28 & 0x0FFFFFFFu;
+        }
     }
-    *sectors_out = (uint32_t)buf[60] | ((uint32_t)buf[61] << 16);
-    if (*sectors_out == 0u) {
-        return -1;
+
+    if (total == 0u) {
+        /*
+         * IDENTIFY 失败或容量字段全 0：用 READ 验证介质存在。
+         * 扇区数占位用 16384×512=8MiB（与玩具 ext2 单卷上限一致，attach 仍会 cap）。
+         */
+        uint8_t scratch[512];
+        if (ide_read_sectors(drive, 0, 1, scratch) != 0) {
+            return -1;
+        }
+        total = 16384u;
     }
+
+    if (total > 0xFFFFFFFFu) {
+        total = 0xFFFFFFFFu;
+    }
+    *sectors_out = (uint32_t)total;
     return 0;
 }
 

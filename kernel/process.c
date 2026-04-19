@@ -1,13 +1,30 @@
-/* kernel/process.c - 进程管理与调度实现 */
+/* kernel/process.c - 进程管理与调度实现（RR 策略见 sched.c） */
 
 #include "process.h"
 #include "pmm.h"
 #include "vmm.h"
 #include <stddef.h>
+#include <stdint.h>
 
 extern uint64_t chaseros_active_user_pid;
 
+uint64_t g_sched_context_switches = 0;
+
 static scheduler_t sched;
+
+proc_t *process_tasks(void) {
+    return sched.tasks;
+}
+
+uint32_t process_sched_ready_count(void) {
+    unsigned n = 0;
+    for (int i = 0; i < MAX_TASKS; i++) {
+        if (sched.tasks[i].state == PROC_STATE_READY) {
+            n++;
+        }
+    }
+    return (uint32_t)n;
+}
 
 proc_t *get_current_process(void) {
     return &sched.tasks[sched.current_task_idx];
@@ -130,8 +147,16 @@ void process_bind_user_slot(uint64_t pid) {
 
 proc_t *process_current_task_for_ipc(void) {
     proc_t *u = process_find_by_pid(chaseros_active_user_pid);
-    if (u && u->state == PROC_STATE_USER_SLOT) {
-        return u;
+    /*
+     * ipc_send 成功交付后用户会变为 WAITING_REPLY；若在 USER_SLOT 之外就退回
+     * get_current_process()（多为 shell 所在内核线程），则 SYS_IPC_CALL 里
+     * ipc_wait_until_pending 会等错 PCB，表现为 hello/cnrun/slime 在首条 IPC 后死等。
+     */
+    if (u && chaseros_active_user_pid != 0) {
+        if (u->state == PROC_STATE_USER_SLOT || u->state == PROC_STATE_WAITING_REPLY ||
+            u->state == PROC_STATE_SENDING) {
+            return u;
+        }
     }
     return get_current_process();
 }
@@ -170,5 +195,6 @@ void schedule(void) {
         sched.tasks[old_idx].state = PROC_STATE_READY;
         sched.tasks[next_idx].state = PROC_STATE_RUNNING;
         sched.current_task_idx = next_idx;
+        g_sched_context_switches++;
     }
 }

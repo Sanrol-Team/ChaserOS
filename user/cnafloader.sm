@@ -1,0 +1,6 @@
+// CNAFLOADER — Slime 用户态，作为内嵌 demo_cnaf.bin 的 IMAGE（无参 cnrun 运行）。
+// 说明 CNAF 与内核 cnrun 的关系；真正从磁盘装载 CNAF 由 Shell 命令 cnrun <路径> 在内核完成。
+print "=== ChaserOS CNAFLOADER (Slime) ===\n"
+print "Embedded IMAGE: this bundle is the default cnrun (no args) payload.\n"
+print "To load a .cnaf from disk: mount VFS, copy the file, then: cnrun <filename>\n"
+print "Kernel streams CNAF header + ELF IMAGE; user ring3 has no exec() syscall yet.\n"

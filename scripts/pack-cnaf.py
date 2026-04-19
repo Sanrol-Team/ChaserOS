@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""将 MANIFEST（UTF-8）与 ELF 二进制打成 CNAF v0.2（cnaf_spec.h）。"""
+"""将 MANIFEST（UTF-8）与 CNAB 映像（kernel/fs/cnaf/cnab.h）打成 CNAF v0.2（cnaf_spec.h）。
+IMAGE 节为 CNAB 原生格式，内核 cnrun 不解析 ELF。"""
 
 from __future__ import annotations
 
@@ -15,7 +16,7 @@ def align8(n: int) -> int:
 def write_cnaf_file(
     path: str,
     manifest_utf8: bytes,
-    elf_blob: bytes,
+    cnab_blob: bytes,
 ) -> None:
     CNAF_MAGIC = 0x46414E43
     CNAF_FMT_MAJOR = 0
@@ -32,7 +33,7 @@ def write_cnaf_file(
     manifest_off = header_bytes
     manifest_sz = len(manifest_utf8)
     image_off = align8(manifest_off + manifest_sz)
-    image_sz = len(elf_blob)
+    image_sz = len(cnab_blob)
 
     id_zero = bytes(16)
     hdr = (
@@ -57,7 +58,7 @@ def write_cnaf_file(
 
     pad_meta = bytes(header_bytes - len(meta))
     gap = bytes(image_off - manifest_off - manifest_sz)
-    blob = meta + pad_meta + manifest_utf8 + gap + elf_blob
+    blob = meta + pad_meta + manifest_utf8 + gap + cnab_blob
 
     if len(blob) != image_off + image_sz:
         raise RuntimeError(
@@ -69,26 +70,26 @@ def write_cnaf_file(
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="打包 CNAF v0.2（MANIFEST + ELF IMAGE）")
+    ap = argparse.ArgumentParser(description="打包 CNAF v0.2（MANIFEST + CNAB IMAGE）")
     ap.add_argument("output", help="输出 .cnaf")
-    ap.add_argument("elf", help="输入 ELF64 文件路径")
+    ap.add_argument("cnab", help="输入 CNAB 映像文件路径（见 scripts/wrap-cnab.py）")
     ap.add_argument("--bundle-id", default="cnos.generated.app")
     ap.add_argument("--name", default="CNOS App")
     ap.add_argument("--version", default="0.1.0")
     args = ap.parse_args()
 
-    with open(args.elf, "rb") as f:
-        elf = f.read()
+    with open(args.cnab, "rb") as f:
+        cnab = f.read()
 
     manifest = (
         "format_version = 1\n"
         f"bundle_id = {args.bundle_id}\n"
         f"name = {args.name}\n"
         f"version = {args.version}\n"
-        "entry_symbol = _start\n"
+        "image_kind = cnab\n"
     ).encode("utf-8")
 
-    write_cnaf_file(args.output, manifest, elf)
+    write_cnaf_file(args.output, manifest, cnab)
 
 
 if __name__ == "__main__":

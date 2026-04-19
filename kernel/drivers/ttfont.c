@@ -47,14 +47,35 @@ void ttfont_reset(void) {
 #endif
 }
 
+void ttfont_set_bitmap_scale(int scale) {
+    if (scale < 1) {
+        scale = 1;
+    }
+    if (scale > 10) {
+        scale = 10;
+    }
+    s_scale_bm = scale;
+}
+
+int ttfont_get_bitmap_scale(void) {
+    return s_scale_bm;
+}
+
 void ttfont_init_for_height(int screen_height) {
-    ttfont_reset();
+    /*
+     * 不可在此调用 ttfont_reset()：会清掉 g_vec_ok，导致 console_init 在 ttfont_init_stb
+     * 成功后又执行本函数时矢量字体路径永久失效。
+     */
+    /*
+     * 按屏高估档位：height/36 在 768p 会得到约 21，若上限 10 会恒为最大档，字占满屏难读。
+     * 自动档位上限改为 6；需要更大字可 shell：resolution scale 7..10。
+     */
     int s = screen_height / 36;
     if (s < 1) {
         s = 1;
     }
-    if (s > 10) {
-        s = 10;
+    if (s > 6) {
+        s = 6;
     }
     s_scale_bm = s;
 #ifdef CHASEROS_HAVE_STBTT

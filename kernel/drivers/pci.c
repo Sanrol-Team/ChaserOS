@@ -16,6 +16,17 @@ uint32_t pci_read_config(uint8_t bus, uint8_t device, uint8_t function, uint8_t 
     return inl(PCI_CONFIG_DATA);
 }
 
+void pci_write_config(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint32_t value) {
+    uint32_t address =
+        (uint32_t)0x80000000u | ((uint32_t)bus << 16) | ((uint32_t)device << 11) |
+        ((uint32_t)function << 8) | (uint32_t)(offset & 0xFCu);
+    outl(PCI_CONFIG_ADDR, address);
+    outl(PCI_CONFIG_DATA, value);
+}
+
+void pci_init(void) {
+}
+
 void pci_list_devices() {
     puts("PCI Devices List:\n");
     puts("Bus | Dev | Func | Vendor | Device\n");

@@ -1,7 +1,8 @@
-/* kernel/ipc.c - IPC 实现（Send / Receive / Reply + 阻塞等待） */
+/* kernel/ipc.c - IPC 实现（Send / Receive / Reply；队列发送端阻塞至被接收） */
 
 #include "ipc.h"
 #include "process.h"
+#include "sched.h"
 #include <stdint.h>
 #include <stddef.h>
 
@@ -48,6 +49,14 @@ static proc_t *sender_dequeue(proc_t *recv, uint64_t src_pid) {
     return NULL;
 }
 
+/** 队列交付后：发送方进入 WAITING_REPLY，直至对端 ipc_reply */
+static void ipc_wake_sender_after_deliver(proc_t *sender) {
+    if (!sender || sender->state != PROC_STATE_SENDING) {
+        return;
+    }
+    sender->state = PROC_STATE_WAITING_REPLY;
+}
+
 void ipc_wait_until_pending(struct proc *cur) {
     proc_t *p = cur;
     while (!p->msg_pending) {
@@ -80,12 +89,17 @@ int ipc_send(uint64_t dest_pid, message_t *msg) {
         msg_copy_to_buffer(dest, current, msg);
         dest->msg_pending = 1;
         process_ipc_wake_from_receive(dest);
+        /* 同步 RPC：发送方在收到 ipc_reply 前视为等待响应 */
+        current->state = PROC_STATE_WAITING_REPLY;
         return IPC_OK;
     }
 
     stash_outgoing(current, msg);
     current->state = PROC_STATE_SENDING;
     sender_enqueue(dest, current);
+    while (current->state == PROC_STATE_SENDING) {
+        sched_yield();
+    }
     return IPC_OK;
 }
 
@@ -94,25 +108,32 @@ int ipc_receive(uint64_t src_pid, message_t *msg) {
         return IPC_ERROR;
     }
 
-    proc_t *current = process_current_task_for_ipc();
+    /*
+     * 必须用「当前实际运行的内核线程」作为接收方。若用 process_current_task_for_ipc()，
+     * 在 ring3 用户已占用 USER_SLOT 时会错误地把用户 PCB 当作接收方，PID=3 hybrid
+     * 服务永远无法进入 RECEIVING，用户 ipc_send 会在 SENDING 队列上死等。
+     */
+    proc_t *current = get_current_process();
 
-    if (current->msg_pending &&
-        (src_pid == 0 || current->msg_buffer.sender == src_pid)) {
-        msg_copy_out(msg, current);
-        current->msg_pending = 0;
-        process_ipc_wake_from_receive(current);
-        return IPC_OK;
+    for (;;) {
+        if (current->msg_pending &&
+            (src_pid == 0 || current->msg_buffer.sender == src_pid)) {
+            msg_copy_out(msg, current);
+            current->msg_pending = 0;
+            process_ipc_wake_from_receive(current);
+            return IPC_OK;
+        }
+
+        proc_t *sender = sender_dequeue(current, src_pid);
+        if (sender) {
+            msg_copy_out(msg, sender);
+            ipc_wake_sender_after_deliver(sender);
+            return IPC_OK;
+        }
+
+        current->state = PROC_STATE_RECEIVING;
+        __asm__ volatile("sti\n\thlt\n\tcli" ::: "memory");
     }
-
-    proc_t *sender = sender_dequeue(current, src_pid);
-    if (sender) {
-        msg_copy_out(msg, sender);
-        sender->state = PROC_STATE_WAITING_REPLY;
-        return IPC_OK;
-    }
-
-    current->state = PROC_STATE_RECEIVING;
-    return IPC_WOULD_BLOCK;
 }
 
 int ipc_reply(uint64_t dest_pid, message_t *msg) {
@@ -120,7 +141,7 @@ int ipc_reply(uint64_t dest_pid, message_t *msg) {
         return IPC_ERROR;
     }
 
-    proc_t *current = process_current_task_for_ipc();
+    proc_t *current = get_current_process();
     proc_t *peer = process_find_by_pid(dest_pid);
 
     if (!peer || peer->state != PROC_STATE_WAITING_REPLY) {

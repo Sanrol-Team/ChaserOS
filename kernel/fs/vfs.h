@@ -1,4 +1,4 @@
-/* kernel/fs/vfs.h - 虚拟文件系统：根挂载 + 后端分发（当前为 chaseros ext2 卷） */
+/* kernel/fs/vfs.h - 虚拟文件系统：根挂载 + 多后端（ext2 块卷 + /dev 伪节点等） */
 
 #ifndef VFS_H
 #define VFS_H
@@ -21,7 +21,8 @@ typedef struct vfs_stat {
 
 typedef enum {
     VFS_FS_NONE = 0,
-    VFS_FS_EXT2,
+    VFS_FS_EXT2, /* 根卷块设备上的 ext2 */
+    VFS_FS_DEV,  /* 内核伪节点（见 vfs_devfs），与 ext2 并存 */
 } vfs_fstype_t;
 
 void vfs_init(void);

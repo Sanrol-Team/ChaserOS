@@ -3,6 +3,7 @@
 #include "sysinfo.h"
 #include "console.h"
 #include "drivers/ide.h"
+#include "sched.h"
 
 extern void puts(const char *s);
 extern void puts_dec(uint64_t n);
@@ -13,6 +14,11 @@ extern void putchar(char c);
 
 void sysinfo_print(void) {
     puts("ChaserOS System Information\n");
+
+    puts("  Kernel: hybrid (in-kernel services + IRQ0 RR + ring3 slot)\n");
+    puts("  Scheduler context switches: ");
+    puts_dec(sched_context_switches());
+    puts("\n");
 
     puts("  Multiboot2 MBI (phys): ");
     puts_hex(console_get_mbi_phys());

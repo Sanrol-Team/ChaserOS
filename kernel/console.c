@@ -10,12 +10,16 @@
 
 static uint64_t g_mbi_phys;
 static int s_fb_mode;
+static int s_vga_text;
 static struct vbe_mode_info s_vbe;
 static uint32_t s_fg = 0xFFE0E0E0u;
 static uint32_t s_bg = 0xFF101010u;
 
 static int pen_x;
 static int pen_y;
+
+static int s_fb_phys_h;
+static int s_fb_font_manual;
 
 static void layout_metrics(int *lh, int *cw) {
     ttfont_line_metrics(lh, cw);
@@ -24,15 +28,18 @@ static void layout_metrics(int *lh, int *cw) {
 void console_init(uint64_t mbi_phys) {
     g_mbi_phys = mbi_phys;
     s_fb_mode = 0;
+    s_vga_text = 0;
 
     struct vbe_mode_info vbe;
     if (multiboot_fill_vbe(mbi_phys, &vbe) == 0 && vbe.framebuffer != 0 && vbe.width > 0 && vbe.height > 0 &&
         vbe.bpp >= 24) {
         s_vbe = vbe;
+        s_fb_phys_h = (int)vbe.height;
+        s_fb_font_manual = 0;
         graphics_init(&s_vbe);
         s_fb_mode = 1;
         ttfont_reset();
-        ttfont_init_for_height((int)vbe.height);
+        ttfont_init_for_height(s_fb_phys_h);
         uint32_t ms = 0, me = 0;
         int ok = -1;
         if (multiboot_find_module_suffix(mbi_phys, "font.ttf", &ms, &me) == 0 && me > ms) {
@@ -42,7 +49,7 @@ void console_init(uint64_t mbi_phys) {
             ok = ttfont_init_stb((const void *)(uintptr_t)ms, (size_t)(me - ms));
         }
         if (ok == 0) {
-            ttfont_init_for_height((int)vbe.height);
+            ttfont_init_for_height(s_fb_phys_h);
         }
         graphics_clear(s_bg);
         pen_x = 8;
@@ -51,7 +58,15 @@ void console_init(uint64_t mbi_phys) {
     }
 
     ttfont_reset();
+    /*
+     * UEFI/GOP 下固件仍在扫描线性帧缓冲时，写 VGA 文本 0xB8000 会在窗口上变成乱块花屏。
+     * 若 MBI 含 EFI 标签且无可用 RGB 帧缓冲，则不要回退到 VGA，仅依赖串口。
+     */
+    if (multiboot_has_efi_handoff(mbi_phys)) {
+        return;
+    }
     vga_init();
+    s_vga_text = 1;
 }
 
 int console_is_framebuffer(void) {
@@ -140,11 +155,17 @@ void console_clear(void) {
         pen_y = 8;
         return;
     }
+    if (!s_vga_text) {
+        return;
+    }
     vga_clear();
 }
 
 void console_putchar(char c) {
     if (!s_fb_mode) {
+        if (!s_vga_text) {
+            return;
+        }
         vga_putchar(c);
         return;
     }
@@ -202,4 +223,31 @@ void console_puts(const char *s) {
     while (*s) {
         console_putchar(*s++);
     }
+}
+
+void console_set_fb_font_scale(int step) {
+    if (!s_fb_mode) {
+        return;
+    }
+    if (step < 0 || step > 10) {
+        return;
+    }
+    s_fb_font_manual = step;
+    ttfont_init_for_height(s_fb_phys_h);
+    if (step >= 1 && step <= 10 && !ttfont_is_vector()) {
+        ttfont_set_bitmap_scale(step);
+    }
+    graphics_clear(s_bg);
+    pen_x = 8;
+    pen_y = 8;
+}
+
+int console_get_fb_font_scale(void) {
+    if (!s_fb_mode) {
+        return 0;
+    }
+    if (s_fb_font_manual >= 1 && s_fb_font_manual <= 10) {
+        return s_fb_font_manual;
+    }
+    return ttfont_get_bitmap_scale();
 }

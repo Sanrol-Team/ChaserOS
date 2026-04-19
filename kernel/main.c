@@ -1,4 +1,4 @@
-/* kernel/main.c - 微内核主要入口点 */
+/* kernel/main.c - 混合内核入口 */
 
 #include <stdint.h>
 #include "pmm.h"
@@ -12,9 +12,13 @@
 #include "drivers/vga.h"
 #include "console.h"
 #include "drivers/ide.h"
+#ifdef CHASEROS_HAVE_AHCI_RUST
+#include "drivers/ahci_pci.h"
+#endif
 #include "fs/chaseros/chaseros_ext2_vol.h"
 #include "gdt.h"
 #include "hybrid_ipc.h"
+#include "sched.h"
 
 void putchar(char c) {
     serial_putchar(c);
@@ -72,10 +76,14 @@ void kernel_main(uint64_t mbi_phys, uint64_t boot_magic) {
     pmm_init(mbi_phys);
     vmm_init();
     ide_init();
+#ifdef CHASEROS_HAVE_AHCI_RUST
+    chaseros_ahci_pci_probe();
+#endif
     chaseros_vol_init();
     vfs_init();
 
     process_init();
+    sched_init();
     gdt_init();
     idt_init();
     shell_init();

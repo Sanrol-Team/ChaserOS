@@ -79,6 +79,16 @@ void _start(void)
     }
     write_cstr(1, "\n");
 
+    {
+        char zbuf[4];
+        long zfd = chaseros_syscall_open("/dev/zero", 0);
+        long zn = chaseros_syscall_read((int)zfd, zbuf, sizeof zbuf);
+        write_cstr(1, "open(/dev/zero) read=");
+        write_s64_dec(1, zn);
+        write_cstr(1, "\n");
+        (void)chaseros_syscall_close((int)zfd);
+    }
+
     /* VFS 已挂载时：打开根目录下文件名；否则多为 EINVAL（未挂载）或 ENOENT */
     static const char bogus[] = "__chaseros_no_such_file__";
     long fd = chaseros_syscall_open(bogus, 0);

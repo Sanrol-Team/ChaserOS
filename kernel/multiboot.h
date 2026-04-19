@@ -35,6 +35,13 @@ struct vbe_mode_info {
 #define MULTIBOOT_TAG_TYPE_MMAP 6
 #define MULTIBOOT_TAG_TYPE_FRAMEBUFFER 8
 #define MULTIBOOT_TAG_TYPE_MODULE      3
+/* GRUB 经 UEFI 引导时信息区常含其一；用于避免在 GOP 下仍写 0xB8000 导致花屏 */
+#define MULTIBOOT_TAG_TYPE_EFI32 11
+#define MULTIBOOT_TAG_TYPE_EFI64 12
+
+/* Multiboot2 帧缓冲 tag：framebuffer_type */
+#define MULTIBOOT_FRAMEBUFFER_TYPE_INDEXED 0
+#define MULTIBOOT_FRAMEBUFFER_TYPE_RGB 1
 
 struct multiboot_tag {
     uint32_t type;
@@ -80,6 +87,7 @@ struct multiboot_tag_module {
 
 int multiboot_validate(uint32_t magic, uint64_t mbi_phys);
 int multiboot_fill_vbe(uint64_t mbi_phys, struct vbe_mode_info *out);
+int multiboot_has_efi_handoff(uint64_t mbi_phys);
 
 /* 查找 cmdline 以 suffix 结尾的模块（如 font.ttf）；返回物理起止地址 */
 int multiboot_find_module_suffix(uint64_t mbi_phys, const char *suffix, uint32_t *mod_start, uint32_t *mod_end);

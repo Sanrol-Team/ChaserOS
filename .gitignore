@@ -1,5 +1,6 @@
 # CMake / 各离构建目录
 /build/
+build-cargo-test/
 /build-cnaf-user/
 /build-tmp/
 cmake-build-*/

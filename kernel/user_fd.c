@@ -1,6 +1,7 @@
 /* kernel/user_fd.c — 用户态 open/close/read；阶段 3 可选经 IPC 服务委派 */
 
 #include "user_fd.h"
+#include "user.h"
 #include "fs/vfs.h"
 #include "errno.h"
 #include "syscall_abi.h"
@@ -31,6 +32,7 @@ void user_fd_reset(void) {
 
 void user_fd_umount_close_all(void) {
     user_fd_reset();
+    chaseros_user_cwd_reset();
 }
 
 static long copy_user_path(char *dst, size_t dst_sz, uint64_t ua) {
@@ -101,10 +103,15 @@ long user_fd_sys_open(uint64_t path_ptr, int flags) {
         return ce;
     }
 
+    char resolved[256];
+    if (vfs_resolve_path(chaseros_user_get_cwd(), path, resolved, sizeof resolved) != 0) {
+        return -EINVAL;
+    }
+
 #ifdef CHASEROS_HYBRID_FS_VIA_IPC
-    return hybrid_user_fd_open_via_ipc(path, flags);
+    return hybrid_user_fd_open_via_ipc(resolved, flags);
 #else
-    return user_fd_open_kpath(path, flags);
+    return user_fd_open_kpath(resolved, flags);
 #endif
 }
 

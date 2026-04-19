@@ -37,6 +37,13 @@ PREFIX="$(cd "$PREFIX" && pwd)"
 
 if [ -x "$PREFIX/bin/${TARGET}-gcc" ] && [ -x "$PREFIX/bin/${TARGET}-ld" ]; then
   echo "ANAF: 已存在 ${TARGET}-gcc / ${TARGET}-ld（$PREFIX），跳过编译。"
+  cat >"$PREFIX/anaf-toolchain.env" <<EOF
+# 由 scripts/build-anaf-cross-toolchain.sh 生成（已存在编译器时仅写 env）
+export ANAF_PREFIX="$PREFIX"
+export ANAF_GNU_TARGET="$TARGET"
+export PATH="$PREFIX/bin:\$PATH"
+EOF
+  echo "已写入: $PREFIX/anaf-toolchain.env"
   exit 0
 fi
 

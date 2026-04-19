@@ -13,6 +13,7 @@
 #include "clock.h"
 #include "user_fd.h"
 #include "ipc.h"
+#include "sched.h"
 
 volatile uint64_t chaseros_kernel_ticks = 0;
 
@@ -74,7 +75,7 @@ void isr_handler(struct registers *regs) {
     } else if (regs->int_no >= 32 && regs->int_no <= 47) {
         if (regs->int_no == 32) {
             chaseros_kernel_ticks++;
-            schedule();
+            sched_on_timer_tick();
         } else if (regs->int_no == 33) {
             uint8_t scancode = inb(0x60);
             if (scancode < 0x80) {
@@ -210,8 +211,6 @@ void isr_handler(struct registers *regs) {
             if (r == IPC_OK) {
                 user_copy_message_out(&m, msg_uva);
                 syscall_ret(regs, 0);
-            } else if (r == IPC_WOULD_BLOCK) {
-                syscall_ret(regs, -EAGAIN);
             } else {
                 syscall_ret(regs, -EINVAL);
             }

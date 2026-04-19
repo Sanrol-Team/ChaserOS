@@ -101,10 +101,11 @@ ASM="$WORKDIR/out.asm"
 OBJ="$WORKDIR/out.o"
 ARCHIVE="$WORKDIR/lib${LIB_NAME}.a"
 
+# --emit static-lib：生成无 _start 的 NASM，便于 ar 归档（CNAFL IMAGE）
 if [[ -n "${SLIME_PATH:-}" ]]; then
-  env "SLIME_PATH=$SLIME_PATH" "$SLIMEC_BIN" --target cnos "$SRC" -o "$ASM"
+  env "SLIME_PATH=$SLIME_PATH" "$SLIMEC_BIN" --target cnos --emit static-lib "$SRC" -o "$ASM"
 else
-  "$SLIMEC_BIN" --target cnos "$SRC" -o "$ASM"
+  "$SLIMEC_BIN" --target cnos --emit static-lib "$SRC" -o "$ASM"
 fi
 "$NASM_BIN" -felf64 "$ASM" -o "$OBJ"
 "$AR_BIN" rcs "$ARCHIVE" "$OBJ"

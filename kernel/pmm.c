@@ -118,6 +118,28 @@ void pmm_init(uint64_t mbi_phys) {
             used_pages++;
         }
     }
+
+    /*
+     * Multiboot 帧缓冲所在物理页若在 mmap 里被标为可用，会被 pmm_alloc 分配并覆盖，
+     * 表现为 Shell 字模花屏、零星字符。整段帧缓冲区按页保留。
+     */
+    {
+        struct vbe_mode_info vbe;
+        if (multiboot_fill_vbe(mbi_phys, &vbe) == 0 && vbe.framebuffer != 0 && vbe.height > 0) {
+            uint64_t fb_base = vbe.framebuffer;
+            uint64_t fb_size = (uint64_t)vbe.pitch * (uint64_t)vbe.height;
+            if (fb_size != 0) {
+                uint64_t fb_end = fb_base + fb_size;
+                for (uint64_t a = fb_base & ~(uint64_t)(PAGE_SIZE - 1); a < fb_end; a += PAGE_SIZE) {
+                    uint64_t pg = a / PAGE_SIZE;
+                    if (pg < total_pages && !bitmap_test(pg)) {
+                        bitmap_set(pg);
+                        used_pages++;
+                    }
+                }
+            }
+        }
+    }
 }
 
 void *pmm_alloc_page() {

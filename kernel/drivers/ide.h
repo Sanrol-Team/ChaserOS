@@ -16,7 +16,7 @@ void ide_init(void);
 /* IDENTIFY DEVICE；成功返回 0，model 为 40 字节 ASCII（非 0 结尾） */
 int ide_identify(uint8_t drive, char model[40]);
 
-/* LBA28 扇区容量（IDENTIFY word60-61） */
+/* IDENTIFY 扇区总数：优先 word 60-61，若为 0 则用 word 100-103（48-bit） */
 int ide_capacity_sectors(uint8_t drive, uint32_t *sectors_out);
 
 /*

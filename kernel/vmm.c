@@ -104,15 +104,25 @@ int vmm_user_range_writable(uint64_t addr, size_t len) {
 
 void vmm_grant_user_2mb_region(uint64_t virt, int user_writable) {
     uint64_t *pml4 = (uint64_t *)vmm_get_current_pml4();
-    uint64_t pml4e = pml4[PML4_INDEX(virt)];
+    uint32_t i4 = PML4_INDEX(virt);
+    uint64_t pml4e = pml4[i4];
     if (!(pml4e & PAGE_PRESENT)) {
         return;
     }
+    /*
+     * 长模式下 CPL=3 访问一页时，自 PML4 至叶表路径上各级表项均须 U/S=1。
+     * 引导代码仅用 0x03 填表（无 USER），仅改 PD 不足以开放用户态。
+     */
+    pml4[i4] = pml4e | PAGE_USER;
+
     uint64_t *pdpt = (uint64_t *)(pml4e & ~0xFFFULL);
-    uint64_t pdpte = pdpt[PDPT_INDEX(virt)];
+    uint32_t i3 = PDPT_INDEX(virt);
+    uint64_t pdpte = pdpt[i3];
     if (!(pdpte & PAGE_PRESENT)) {
         return;
     }
+    pdpt[i3] = pdpte | PAGE_USER;
+
     uint64_t *pd = (uint64_t *)(pdpte & ~0xFFFULL);
     uint64_t idx = PD_INDEX(virt);
     if (pd[idx] & PAGE_PRESENT) {

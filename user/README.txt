@@ -24,8 +24,9 @@ CNOS 用户态骨架（完整）
       minimal.c            最小 C 示例（可复制改名）
 
     hello.c              C 演示（内核 CMake 亦可嵌入）
+    cnafloader.sm        Slime「CNAFLOADER」文案（无参 **cnrun** 内嵌包 IMAGE；需 **CHASEROS_WITH_SLIME_USER**）
     hello.sm / hello-std.sm / slime-demo.sm / syscall-errno-demo.sm / cnos-first.sm / ipc-hl-demo.sm
-                         Slime 演示（需 SLIME_PATH 指向 integrations/slime-for-cnos/std）；**cnos-first.sm** 展示 runtime + io 基础设施形态
+                         Slime 演示（需 SLIME_PATH 指向 integrations/slime-for-chaseros/std）；**cnos-first.sm** 展示 runtime + io 基础设施形态
 
 三条编译路径
 ------------
@@ -34,7 +35,7 @@ CNOS 用户态骨架（完整）
 
   cmake --build build
 
-  生成 **build/user/hello.elf**（来自 **hello.c**），可选 **CNOS_WITH_SLIME_USER** 嵌入 Slime ELF。
+  生成 **build/user/hello.elf**（来自 **hello.c**）。可选 **-DCHASEROS_WITH_SLIME_USER=ON** 嵌入 **hello_sm.elf**，且内嵌 **demo_cnaf.bin** 的 IMAGE 改为 **cnafloader.sm**（CNAFLOADER）。
 
 **2）仅用户 ELF — CMake（user 子目录）**
 

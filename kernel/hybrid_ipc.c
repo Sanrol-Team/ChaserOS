@@ -55,11 +55,7 @@ long hybrid_user_fd_open_via_ipc(const char *path, int flags) {
 static void chaseros_hybrid_ipc_service_loop(void) {
     for (;;) {
         message_t m;
-        int r;
-        while ((r = ipc_receive(0, &m)) == IPC_WOULD_BLOCK) {
-            __asm__ volatile("hlt");
-        }
-        if (r != IPC_OK) {
+        if (ipc_receive(0, &m) != IPC_OK) {
             continue;
         }
 

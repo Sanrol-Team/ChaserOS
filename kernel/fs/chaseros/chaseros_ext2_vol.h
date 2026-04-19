@@ -9,7 +9,8 @@
 typedef enum {
     CHASEROS_VOL_NONE = 0,
     CHASEROS_VOL_RAM,
-    CHASEROS_VOL_IDE
+    CHASEROS_VOL_IDE,
+    CHASEROS_VOL_AHCI
 } chaseros_vol_type_t;
 
 typedef struct chaseros_vol {
@@ -17,6 +18,7 @@ typedef struct chaseros_vol {
     uint8_t *ram_base;
     size_t size_bytes;
     uint8_t ide_drive;
+    uint32_t ahci_port;
 } chaseros_vol_t;
 
 void chaseros_vol_init(void);
@@ -36,6 +38,11 @@ void chaseros_vol_detach_all(void);
 
 /* IDE：drive 0=主 1=从，容量来自 IDENTIFY */
 int chaseros_vol_attach_ide(uint8_t drive);
+
+#ifdef CHASEROS_HAVE_AHCI_RUST
+/* AHCI：port 0..31，须已执行 chaseros_ahci_pci_probe 且该口有盘 */
+int chaseros_vol_attach_ahci(uint32_t port);
+#endif
 
 int chaseros_ext2_format(const chaseros_vol_t *v);
 /** 列出目录 path（绝对路径，已规范化，如 "/" 或 "/foo"） */

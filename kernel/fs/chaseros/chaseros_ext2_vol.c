@@ -5,6 +5,10 @@
 
 #include "fs/chaseros/chaseros_ext2_vol.h"
 #include "drivers/ide.h"
+#ifdef CHASEROS_HAVE_AHCI_RUST
+#include "drivers/ahci_pci.h"
+#include "drivers/ahci_rust_api.h"
+#endif
 #include "pmm.h"
 #include "ext2_fs.h"
 #include <stdint.h>
@@ -58,6 +62,7 @@ void chaseros_vol_init(void) {
     g_vol.ram_base = NULL;
     g_vol.size_bytes = 0;
     g_vol.ide_drive = 0;
+    g_vol.ahci_port = 0;
     g_ram_alloc = NULL;
     g_ram_npages = 0;
 }
@@ -108,9 +113,18 @@ int chaseros_vol_attach_ide(uint8_t drive) {
     if (ide_capacity_sectors(drive, &sec) != 0) {
         return -1;
     }
+    /* 至少 512 扇区（256KiB），避免 (sec*512)&~1023 对齐成 0 或小于下限 */
+    if (sec < 512u) {
+        return -1;
+    }
     uint64_t bytes = ((uint64_t)sec * 512u) & ~1023ULL;
     if (bytes < 256u * 1024u) {
         return -1;
+    }
+    /* 单块组玩具 ext2 最多 8192×1KiB 块；大容量 IDE 卷只使用设备前 8MiB（与 mkdisk 上限一致） */
+    const uint64_t max_toy = 8192u * 1024u;
+    if (bytes > max_toy) {
+        bytes = max_toy;
     }
     chaseros_vol_detach_all();
     g_vol.type = CHASEROS_VOL_IDE;
@@ -119,6 +133,36 @@ int chaseros_vol_attach_ide(uint8_t drive) {
     g_vol.ide_drive = drive;
     return 0;
 }
+
+#ifdef CHASEROS_HAVE_AHCI_RUST
+int chaseros_vol_attach_ahci(uint32_t port) {
+    uint32_t *abar = chaseros_ahci_get_abar_mmio();
+    if (!abar) {
+        return -1;
+    }
+    uint32_t sec = 0;
+    if (chaseros_ahci_rust_capacity_sectors(abar, port, &sec) != 0) {
+        return -1;
+    }
+    if (sec < 512u) {
+        return -1;
+    }
+    uint64_t bytes = ((uint64_t)sec * 512u) & ~1023ULL;
+    if (bytes < 256u * 1024u) {
+        return -1;
+    }
+    const uint64_t max_toy = 8192u * 1024u;
+    if (bytes > max_toy) {
+        bytes = max_toy;
+    }
+    chaseros_vol_detach_all();
+    g_vol.type = CHASEROS_VOL_AHCI;
+    g_vol.ram_base = NULL;
+    g_vol.size_bytes = (size_t)bytes;
+    g_vol.ahci_port = port;
+    return 0;
+}
+#endif
 
 static int vol_check(const chaseros_vol_t *v) {
     if (!v || v->type == CHASEROS_VOL_NONE) {
@@ -144,6 +188,17 @@ static int vol_read_blk(const chaseros_vol_t *v, uint32_t blk, void *buf) {
     if (v->type == CHASEROS_VOL_IDE) {
         return ide_read_sectors(v->ide_drive, blk * 2u, 2u, buf);
     }
+#ifdef CHASEROS_HAVE_AHCI_RUST
+    if (v->type == CHASEROS_VOL_AHCI) {
+        uint32_t *abar = chaseros_ahci_get_abar_mmio();
+        if (!abar) {
+            return -1;
+        }
+        return chaseros_ahci_rust_rw_sectors(abar, v->ahci_port, blk * 2u, 2u, (uint8_t *)buf, 0) == 0
+                   ? 0
+                   : -1;
+    }
+#endif
     return -1;
 }
 
@@ -161,6 +216,17 @@ static int vol_write_blk(const chaseros_vol_t *v, uint32_t blk, const void *buf)
     if (v->type == CHASEROS_VOL_IDE) {
         return ide_write_sectors(v->ide_drive, blk * 2u, 2u, buf);
     }
+#ifdef CHASEROS_HAVE_AHCI_RUST
+    if (v->type == CHASEROS_VOL_AHCI) {
+        uint32_t *abar = chaseros_ahci_get_abar_mmio();
+        if (!abar) {
+            return -1;
+        }
+        return chaseros_ahci_rust_rw_sectors(abar, v->ahci_port, blk * 2u, 2u, (uint8_t *)buf, 1) == 0
+                   ? 0
+                   : -1;
+    }
+#endif
     return -1;
 }
 

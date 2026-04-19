@@ -16,4 +16,7 @@ void shell_handle_input(char c);
 /* 执行命令 */
 void shell_execute(const char *cmd);
 
+/** 当前 Shell 工作目录（绝对路径，与内核用户态 cwd 同步） */
+const char *shell_get_cwd(void);
+
 #endif
