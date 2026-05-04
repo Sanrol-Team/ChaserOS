@@ -31,12 +31,25 @@ static int find_ahci_bar5(uint64_t *abar_phys_out) {
                     continue;
                 }
                 uint32_t bar5 = pci_read_config((uint8_t)bus, dev, func, 0x24);
-                if ((bar5 & 1u) == 0u) {
+                uint64_t abar_phys;
+                if ((bar5 & 1u) != 0u) {
+                    /* I/O BAR（AHCI ABAR 一般为 MMIO，此项少见） */
+                    abar_phys = (uint64_t)(bar5 & 0xFFFFFFFCu);
+                } else if ((bar5 & 6u) == 4u) {
+                    /* 64-bit MMIO：低 32 位 + BAR6 高 32 位 */
+                    uint32_t hi = pci_read_config((uint8_t)bus, dev, func, 0x28);
+                    abar_phys =
+                        ((uint64_t)hi << 32u) | ((uint64_t)(bar5 & 0xFFFFFFF0u));
+                } else {
+                    /* 典型情况：32-bit memory BAR */
+                    abar_phys = (uint64_t)(bar5 & 0xFFFFFFF0u);
+                }
+                if (abar_phys == 0u) {
                     continue;
                 }
                 uint32_t cmd = pci_read_config((uint8_t)bus, dev, func, 4);
                 pci_write_config((uint8_t)bus, dev, func, 4, cmd | 7u);
-                *abar_phys_out = (uint64_t)(bar5 & 0xFFFFFFF0u);
+                *abar_phys_out = abar_phys;
                 return 0;
             }
         }

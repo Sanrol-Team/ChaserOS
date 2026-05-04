@@ -1,5 +1,5 @@
-CNAF / CNAFL 用户态 ELF（ChaserOS 交叉工具链）
-============================================
+ChaserOS DLL & Application General Format（用户态构建）
+====================================================
 
 `kernel/fs/cnaf/cnaf_spec.h` 约定：CNAF App 的 IMAGE 节载荷为 **CNAB**（内核不解析 ELF）；本目录仍用与内核相同的
 **x86_64-elf** 工具链，通过 `cmake/cnaf-anaf.cmake` 追加 freestanding / -nostdlib 标志。

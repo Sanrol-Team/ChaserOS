@@ -19,6 +19,14 @@
 #define CHASEROS_SYS_IPC_RECV       8u
 #define CHASEROS_SYS_IPC_REPLY      9u
 #define CHASEROS_SYS_IPC_CALL       10u
+#define CHASEROS_SYS_DLOPEN         11u
+#define CHASEROS_SYS_DLSYM          12u
+#define CHASEROS_SYS_DLCLOSE        13u
+#define CHASEROS_SYS_SPAWN          14u
+#define CHASEROS_SYS_EXEC           15u
+#define CHASEROS_SYS_WAITPID        16u
+#define CHASEROS_SYS__EXIT          17u
+#define CHASEROS_SYS_FORK           18u
 
 #define CHASEROS_SYSCALL_MAX_IO_BYTES (1024u * 1024u)
 #define CHASEROS_SYSCALL_MAX_WRITE_BYTES CHASEROS_SYSCALL_MAX_IO_BYTES

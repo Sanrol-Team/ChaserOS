@@ -13,6 +13,7 @@ typedef enum {
     PROC_STATE_FREE,
     PROC_STATE_READY,
     PROC_STATE_RUNNING,
+    PROC_STATE_BLOCKED,
     PROC_STATE_SENDING,
     PROC_STATE_RECEIVING,
     PROC_STATE_SLEEPING,
@@ -23,10 +24,20 @@ typedef enum {
 
 typedef struct proc {
     uint64_t pid;
+    uint64_t ppid;
     proc_state_t state;
     uint64_t rsp;
     uint8_t *stack_base;
     uint64_t pml4_phys;
+    int exit_code;
+    int exited;
+    uint64_t wait_target;
+    uint64_t wait_result_pid;
+    int wait_result_status;
+    uint64_t user_entry;
+    uint64_t user_stack_top;
+    uint64_t vm_flags;
+    void *open_files;
 
     message_t msg_buffer;
     struct proc *next_in_queue;
@@ -42,11 +53,15 @@ typedef struct {
 
 proc_t *get_current_process(void);
 proc_t *process_find_by_pid(uint64_t pid);
+proc_t *process_alloc_user(uint64_t ppid);
+int process_reap_child(proc_t *parent, uint64_t target_pid, uint64_t *out_pid, int *out_status);
+void process_mark_exit(proc_t *p, int status);
 void process_init(void);
 proc_t *process_create(void (*entry)(void));
 proc_t *process_spawn_kernel_at_pid(uint64_t pid, void (*entry)(void));
 
 void process_bind_user_slot(uint64_t pid);
+void process_bind_user_slot_ex(uint64_t pid, uint64_t ppid);
 proc_t *process_current_task_for_ipc(void);
 void process_ipc_wake_from_receive(proc_t *p);
 void process_ipc_wake_after_reply(proc_t *peer);

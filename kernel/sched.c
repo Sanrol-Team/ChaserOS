@@ -38,6 +38,8 @@ static const char *sched_state_name(proc_state_t s) {
         return "ready";
     case PROC_STATE_RUNNING:
         return "run";
+    case PROC_STATE_BLOCKED:
+        return "blocked";
     case PROC_STATE_SENDING:
         return "sending";
     case PROC_STATE_RECEIVING:

@@ -45,6 +45,7 @@ set(KERNEL_C
     kernel/multiboot.c
     kernel/pmm.c
     kernel/vmm.c
+    kernel/vmm_cow.c
     kernel/gdt.c
     kernel/idt.c
     kernel/isr.c
@@ -70,6 +71,8 @@ set(KERNEL_C
     kernel/sched.c
     kernel/elf_load.c
     kernel/fs/cnaf/cnab_load.c
+    kernel/loader/cndyn_loader.c
+    kernel/loader/user_exec.c
     kernel/user.c
     kernel/user_fd.c
 )
@@ -80,12 +83,12 @@ endif()
 
 set(USER_HELLO_ELF ${CMAKE_BINARY_DIR}/user/hello.elf)
 set(USER_HELLO_OBJ ${CMAKE_BINARY_DIR}/hello_elf.o)
-set(DEMO_CNAF_BIN ${CMAKE_BINARY_DIR}/demo_cnaf/demo.cnaf)
-set(DEMO_CNAF_OBJ ${CMAKE_BINARY_DIR}/demo_cnaf_obj.o)
+set(DEMO_CNPK_BIN ${CMAKE_BINARY_DIR}/demo_cnpk/demo.cnpk)
+set(DEMO_CNPK_OBJ ${CMAKE_BINARY_DIR}/demo_cnpk_obj.o)
 set(USER_HELLO_RAW ${CMAKE_BINARY_DIR}/user/hello_raw.bin)
-set(USER_HELLO_CNAB ${CMAKE_BINARY_DIR}/user/hello.cnab)
-# 内嵌 demo_cnaf.bin 的 IMAGE：CNAB（非 ELF）；默认由 C hello 经 objcopy+wrap-cnab 生成
-set(CHASEROS_DEMO_CNAF_PAYLOAD ${USER_HELLO_CNAB})
+set(USER_HELLO_CNIM ${CMAKE_BINARY_DIR}/user/hello.cnim)
+# 内嵌 demo_cnpk.bin 的 IMAGE：CNIM（非 ELF）；默认由 C hello 经 objcopy+wrap-cnim 生成
+set(CHASEROS_DEMO_CNPK_PAYLOAD ${USER_HELLO_CNIM})
 
 # 可选：嵌入 Slime（slimec --target cnos）编译的 hello_sm.elf；默认在仓库内 cargo 编译 slimec（见 CHASEROS_BUILD_SLIMEC）
 option(CHASEROS_WITH_SLIME_USER "嵌入 Slime 用户态 hello_sm.elf（需 nasm；slimec 见 CHASEROS_BUILD_SLIMEC / CHASEROS_SLIMEC）；并以内嵌 CNAFLOADER（cnafloader.sm）替代 C hello 作为无参 cnrun 的 demo 包 IMAGE" OFF)
@@ -125,12 +128,12 @@ add_custom_command(
 )
 
 add_custom_command(
-    OUTPUT ${USER_HELLO_CNAB}
+    OUTPUT ${USER_HELLO_CNIM}
     COMMAND ${CHASEROS_OBJCOPY} -O binary ${USER_HELLO_ELF} ${USER_HELLO_RAW}
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/wrap-cnab.py --load-base 0x400000 --entry-rva 0xe0
-            ${USER_HELLO_RAW} ${USER_HELLO_CNAB}
-    DEPENDS ${USER_HELLO_ELF} ${CMAKE_SOURCE_DIR}/scripts/wrap-cnab.py
-    COMMENT "hello.elf → raw → CNAB（CNAF IMAGE 载荷，内核不解析 ELF）"
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/wrap-cnim.py --load-base 0x400000 --entry-rva 0xe0
+            ${USER_HELLO_RAW} ${USER_HELLO_CNIM}
+    DEPENDS ${USER_HELLO_ELF} ${CMAKE_SOURCE_DIR}/scripts/wrap-cnim.py
+    COMMENT "hello.elf → raw → CNIM（CNPK IMAGE 载荷）"
     VERBATIM
 )
 
@@ -141,7 +144,7 @@ if(CHASEROS_WITH_SLIME_USER)
     set(USER_SLIME_ASM ${CMAKE_BINARY_DIR}/user/hello_sm.asm)
     set(USER_SLIME_O ${CMAKE_BINARY_DIR}/user/hello_sm.o)
     set(USER_SLIME_CNAFLOADER_ELF ${CMAKE_BINARY_DIR}/user/cnafloader.elf)
-    set(USER_SLIME_CNAFLOADER_CNAB ${CMAKE_BINARY_DIR}/user/cnafloader.cnab)
+    set(USER_SLIME_CNAFLOADER_CNIM ${CMAKE_BINARY_DIR}/user/cnafloader.cnim)
     set(USER_SLIME_CNAFLOADER_ASM ${CMAKE_BINARY_DIR}/user/cnafloader.asm)
     set(USER_SLIME_CNAFLOADER_O ${CMAKE_BINARY_DIR}/user/cnafloader.o)
     set(CHASEROS_SLIMEC_EXE "${CMAKE_BINARY_DIR}/slime-tools/slimec")
@@ -204,31 +207,31 @@ if(CHASEROS_WITH_SLIME_USER)
     )
 
     add_custom_command(
-        OUTPUT ${USER_SLIME_CNAFLOADER_CNAB}
+        OUTPUT ${USER_SLIME_CNAFLOADER_CNIM}
         COMMAND ${CHASEROS_OBJCOPY} -O binary ${USER_SLIME_CNAFLOADER_ELF}
                 ${CMAKE_BINARY_DIR}/user/cnafloader_raw.bin
-        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/wrap-cnab.py --load-base 0x400000 --entry-rva 0xe0
-                ${CMAKE_BINARY_DIR}/user/cnafloader_raw.bin ${USER_SLIME_CNAFLOADER_CNAB}
-        DEPENDS ${USER_SLIME_CNAFLOADER_ELF} ${CMAKE_SOURCE_DIR}/scripts/wrap-cnab.py
-        COMMENT "cnafloader.elf → CNAB（Slime 内嵌 demo IMAGE）"
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/wrap-cnim.py --load-base 0x400000 --entry-rva 0xe0
+                ${CMAKE_BINARY_DIR}/user/cnafloader_raw.bin ${USER_SLIME_CNAFLOADER_CNIM}
+        DEPENDS ${USER_SLIME_CNAFLOADER_ELF} ${CMAKE_SOURCE_DIR}/scripts/wrap-cnim.py
+        COMMENT "cnafloader.elf → CNIM（Slime 内嵌 demo IMAGE）"
         VERBATIM
     )
 
-    set(CHASEROS_DEMO_CNAF_PAYLOAD ${USER_SLIME_CNAFLOADER_CNAB})
+    set(CHASEROS_DEMO_CNPK_PAYLOAD ${USER_SLIME_CNAFLOADER_CNIM})
     set(KERNEL_EXTRA_OBJ ${USER_SLIME_HELLO_OBJ})
 endif()
 
-# 首个 CNAF 演示包：MANIFEST + IMAGE（CNAB 载荷），供 cnrun（无参数）解析并运行
+# 首个 CNPK 演示包：MANIFEST + IMAGE（CNIM 载荷），供 cnrun（无参数）解析并运行
 add_custom_command(
-    OUTPUT ${DEMO_CNAF_OBJ}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/demo_cnaf
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/pack-cnaf.py ${DEMO_CNAF_BIN} ${CHASEROS_DEMO_CNAF_PAYLOAD}
-            --bundle-id chaseros.demo.first_cnaf --name CNAFLOADER --version 0.1.0
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${DEMO_CNAF_BIN} ${CMAKE_BINARY_DIR}/demo_cnaf.bin
+    OUTPUT ${DEMO_CNPK_OBJ}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/demo_cnpk
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/pack-cnpk.py ${DEMO_CNPK_BIN} ${CHASEROS_DEMO_CNPK_PAYLOAD}
+            --bundle-id chaseros.demo.first_cnpk --name CNPKLOADER --version 1.0.0
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${DEMO_CNPK_BIN} ${CMAKE_BINARY_DIR}/demo_cnaf.bin
     COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_BINARY_DIR}
-            ${CMAKE_LINKER} -r -b binary -o demo_cnaf_obj.o demo_cnaf.bin
-    DEPENDS ${CHASEROS_DEMO_CNAF_PAYLOAD} ${CMAKE_SOURCE_DIR}/scripts/pack-cnaf.py
-    COMMENT "打包并嵌入首个 CNAF（demo_cnaf.bin）"
+            ${CMAKE_LINKER} -r -b binary -o demo_cnpk_obj.o demo_cnaf.bin
+    DEPENDS ${CHASEROS_DEMO_CNPK_PAYLOAD} ${CMAKE_SOURCE_DIR}/scripts/pack-cnpk.py
+    COMMENT "打包并嵌入首个 CNPK（demo_cnaf.bin）"
     VERBATIM
 )
 
@@ -251,7 +254,7 @@ if(CHASEROS_WITH_AHCI_RUST)
     message(STATUS "CHASEROS: AHCI Rust — rustup target add x86_64-unknown-none；cargo=${CHASEROS_CARGO_FOR_BUILD}")
 endif()
 
-add_executable(kernel.elf ${KERNEL_ASM} ${KERNEL_C} ${USER_HELLO_OBJ} ${DEMO_CNAF_OBJ} ${KERNEL_EXTRA_OBJ})
+add_executable(kernel.elf ${KERNEL_ASM} ${KERNEL_C} ${USER_HELLO_OBJ} ${DEMO_CNPK_OBJ} ${KERNEL_EXTRA_OBJ})
 
 target_include_directories(kernel.elf PRIVATE
     ${KERNEL_INCLUDE}

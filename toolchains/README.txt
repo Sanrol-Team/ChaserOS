@@ -22,6 +22,7 @@ CNOS 交叉编译链 — 文档索引
 | 仅安装 slimec 到自定义前缀 | **scripts/build-cnos-slime-toolchain.sh** |
 | Slime → ELF / .cnaf | **scripts/cnos-slime-compile.sh**，**scripts/cnos-slimec.sh**，**toolchains/slime-for-cnos/README.txt** |
 | 内核 CMake（Multiboot） | **cmake/x86_64-elf.cmake**，**CMakePresets.json** |
+| ChaserOS 原生 GCC 引导链（x86_64-chaseros） | **scripts/build-chaseros-native-gcc.sh**，**toolchains/gcc-for-chaseros/README.txt**，**cmake/x86_64-chaseros-gcc.cmake** |
 
 ## 环境变量（cnos-cross-env.sh）
 

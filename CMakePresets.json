@@ -23,7 +23,7 @@
     {
       "name": "slime",
       "inherits": "default",
-      "displayName": "嵌入 Slime 用户 ELF（需 slimec + --target cnos）",
+      "displayName": "嵌入 Slime 用户 ELF（需 slimec + --target cnos；上游目标名尚未更名）",
       "cacheVariables": {
         "CHASEROS_WITH_SLIME_USER": "ON"
       }

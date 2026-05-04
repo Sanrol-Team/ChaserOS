@@ -47,4 +47,12 @@ int vmm_user_range_readable(uint64_t addr, size_t len);
 /** 同上，且叶子页须含 PAGE_WRITE（供 read 等写入用户缓冲区校验） */
 int vmm_user_range_writable(uint64_t addr, size_t len);
 
+/*
+ * COW helpers (phase-1 skeleton):
+ * try handle write page fault for COW-marked mapping.
+ * return 0 if handled, -1 if not a COW fault.
+ */
+int vmm_try_handle_cow_fault(uint64_t fault_addr, uint64_t err_code);
+void vmm_mark_process_cow(uint64_t pml4_phys);
+
 #endif

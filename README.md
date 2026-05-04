@@ -1,6 +1,6 @@
 # ChaserOS
 
-**ChaserOS**（Chaser OS）是基于 **x86_64 混合内核** 的实验性操作系统，为 **CNOS 的变体分支**：**驱动、VFS、控制台等运行在同一内核地址空间**（单体风格），同时提供 **IRQ0 协作式轮转** 的内核线程槽位、**IPC** 与 **ring 3 用户槽位**（见 **`kernel/sched.h`**），**不是**「服务全部外迁」的纯微内核。通过 **GRUB2 + Multiboot2** 从 ISO 启动；控制台为 **VGA 文本模式 + 串口**（Shell 经 PS/2 键盘 IRQ1）。存储侧正在接入 **e2fsprogs / libext2fs** 子集，内核提供 **VFS 根挂载**、裁剪 **ext2** 玩具卷与 **CNAF/CNAFL** 头校验。
+**ChaserOS**（Chaser OS）是基于 **x86_64 混合内核** 的实验性操作系统，现为**独立项目**（不再作为 CNOS 分支协作）：**驱动、VFS、控制台等运行在同一内核地址空间**（单体风格），同时提供 **IRQ0 协作式轮转** 的内核线程槽位、**IPC** 与 **ring 3 用户槽位**（见 **`kernel/sched.h`**），**不是**「服务全部外迁」的纯微内核。通过 **GRUB2 + Multiboot2** 从 ISO 启动；控制台为 **VGA 文本模式 + 串口**（Shell 经 PS/2 键盘 IRQ1）。存储侧正在接入 **e2fsprogs / libext2fs** 子集，内核提供 **VFS 根挂载**、裁剪 **ext2** 玩具卷与 **ChaserOS DLL & Application General Format** 头校验。
 
 ## 特性（概览）
 
@@ -12,8 +12,8 @@
 - **文件系统后端**：`kernel/fs` 内含裁剪后的 **e2fsprogs** 源码树（按需编入 CMake），说明见 `kernel/fs/README`。
 - **调度与 IPC**：**混合内核** 调度入口见 **`kernel/sched.c`**（`sched_on_timer_tick` / `sched_yield`）；**`ps`** 可查看任务槽与上下文切换计数。同步消息见 **`kernel/ipc.c`**（与 `USER_SLOT`、阻塞协作）。
 - **用户态**：ring 3 嵌入 ELF（默认 C `user/hello.c`）；**`int $0x80`** 提供 **exit / write(1,2) / getpid / read(0,EOF) / uptime_ticks**。权威说明：**`kernel/syscall_abi.h`**、**`user/SYSCALL-ABI.txt`**。
-- **Slime**：可选 **`CHASEROS_WITH_SLIME_USER`** 嵌入 **`slimec --target cnos`** 产物（Slime 上游仍使用 `cnos` 目标名）；标准库位于 **`integrations/slime-for-chaseros/std`**，脚本见 **`scripts/cnos-slime-compile.sh`** 等。
-- **应用包**：CNAF/CNAFL 规范与校验（`kernel/fs/cnaf/`）；CNAF App 的 IMAGE 为 **CNAB**（内核不解析 ELF），构建说明见 **`user/BUILD-CNAF.txt`**。
+- **Slime**：可选 **`CHASEROS_WITH_SLIME_USER`** 嵌入 **`slimec --target cnos`** 产物（Slime 上游仍使用 `cnos` 目标名）；标准库位于 **`integrations/slime-for-chaseros/std`**，脚本见 **`scripts/chaseros-slime-compile.sh`**（兼容别名：`cnos-*`）等。
+- **应用包**：采用 **ChaserOS DLL & Application General Format**（`kernel/fs/cnaf/`，文件族：`CNPK/CNLK/CNIM`）；程序/库包支持清单、依赖与动态装载语义，构建说明见 **`user/BUILD-CNAF.txt`**。
 
 ## Shell 与卷（常用流程）
 
@@ -36,6 +36,22 @@
 | `x86_64-elf-gcc` + `x86_64-elf-ld` 等 | 裸机交叉编译（无 libc） |
 | xorriso、`grub-mkrescue` | 生成 `chaseros.iso`（可选；无则只生成 `kernel.elf`） |
 | QEMU `qemu-system-x86_64` | 本地运行 ISO |
+
+### 原生 GCC 开发（ChaserOS 目标）
+
+若你要推进 ChaserOS 自身目标三元组（`x86_64-chaseros`）的原生 GCC 路线，可先用引导链：
+
+```bash
+# 快速模式：优先复用本地 x86_64-elf-*（不重编 GCC）
+# export CHASEROS_NATIVE_USE_LOCAL_ELF=1
+# export CHASEROS_LOCAL_ELF_PREFIX="$HOME/opt/cross"
+bash scripts/build-chaseros-native-gcc.sh "$HOME/opt/chaseros-native-gcc"
+source "$HOME/opt/chaseros-native-gcc/bin/chaseros-native-gcc-env.sh"
+x86_64-chaseros-gcc --version
+bash scripts/test-chaseros-native-link.sh "$HOME/opt/chaseros-native-gcc"
+```
+
+该链路是 bootstrap 阶段（freestanding），已接入最小 `crt0.o + libchaseros_user.a + sysroot headers`，可稳定链接最小用户态 ELF；不替代现有 `x86_64-elf` 内核构建链。
 
 ### 交叉工具链（多数 apt 源无预装包，需自行编译）
 
@@ -66,7 +82,7 @@ CMake 通过 `PATH` 查找 `x86_64-elf-gcc`，也可用 **`CHASEROS_X86_64_ELF_G
 
 ### 宿主上编译 ChaserOS 用户 ELF（可选）
 
-在 Linux 上为 **用户态演示/工具链** 构建时，可参考 **`toolchains/linux-cnos-app/README.txt`** 与 **`scripts/build-cnos-app-linux-toolchain.sh`**（与内核用 **`x86_64-elf`** 裸机链区分用途）。
+在 Linux 上为 **用户态演示/工具链** 构建时，可参考 **`toolchains/linux-cnos-app/README.txt`** 与 **`scripts/build-chaseros-app-linux-toolchain.sh`**（兼容别名：`build-cnos-app-linux-toolchain.sh`；与内核用 **`x86_64-elf`** 裸机链区分用途）。
 
 ## 构建
 

@@ -5,6 +5,7 @@
 
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export CHASEROS_ROOT="$(cd "$_SCRIPT_DIR/.." && pwd)"
+# 兼容旧变量名，后续建议改用 CHASEROS_ROOT。
 export CNOS_ROOT="$CHASEROS_ROOT"
 export SLIME_PATH="$CHASEROS_ROOT/integrations/slime-for-chaseros/std"
 

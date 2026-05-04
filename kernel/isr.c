@@ -14,6 +14,8 @@
 #include "user_fd.h"
 #include "ipc.h"
 #include "sched.h"
+#include "loader/cndyn_loader.h"
+#include "loader/user_exec.h"
 
 volatile uint64_t chaseros_kernel_ticks = 0;
 
@@ -64,6 +66,9 @@ void isr_handler(struct registers *regs) {
         if (regs->int_no == 14u) {
             uint64_t cr2;
             __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
+            if (vmm_try_handle_cow_fault(cr2, regs->err_code) == 0) {
+                return;
+            }
             puts("\nCR2 (fault VA): ");
             puts_hex(cr2);
         }
@@ -103,7 +108,7 @@ void isr_handler(struct registers *regs) {
 
         switch (regs->rax) {
         case CHASEROS_SYS_EXIT:
-            user_on_syscall_exit(regs);
+            syscall_ret(regs, user_sys__exit((long)regs->rdi, regs));
             break;
 
         case CHASEROS_SYS_WRITE: {
@@ -253,6 +258,38 @@ void isr_handler(struct registers *regs) {
             syscall_ret(regs, 0);
             break;
         }
+
+        case CHASEROS_SYS_DLOPEN:
+            syscall_ret(regs, cndyn_dlopen(regs->rdi, regs->rsi));
+            break;
+
+        case CHASEROS_SYS_DLSYM:
+            syscall_ret(regs, cndyn_dlsym(regs->rdi, regs->rsi));
+            break;
+
+        case CHASEROS_SYS_DLCLOSE:
+            syscall_ret(regs, cndyn_dlclose(regs->rdi));
+            break;
+
+        case CHASEROS_SYS_SPAWN:
+            syscall_ret(regs, user_sys_spawn(regs->rdi));
+            break;
+
+        case CHASEROS_SYS_EXEC:
+            syscall_ret(regs, user_sys_exec(regs->rdi, regs));
+            break;
+
+        case CHASEROS_SYS_WAITPID:
+            syscall_ret(regs, user_sys_waitpid((long)regs->rdi, regs->rsi));
+            break;
+
+        case CHASEROS_SYS__EXIT:
+            syscall_ret(regs, user_sys__exit((long)regs->rdi, regs));
+            break;
+
+        case CHASEROS_SYS_FORK:
+            syscall_ret(regs, user_sys_fork(regs));
+            break;
 
         default:
             syscall_ret(regs, -ENOSYS);

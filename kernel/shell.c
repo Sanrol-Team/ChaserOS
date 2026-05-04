@@ -12,6 +12,8 @@
 #include "sysinfo.h"
 #include "sched.h"
 #include "pmm.h"
+#include "process.h"
+#include "loader/cndyn_loader.h"
 #include <stdint.h>
 #include <stddef.h>
 
@@ -237,8 +239,10 @@ void shell_execute(const char *cmd) {
         puts("  lspci             - PCI devices\n");
         puts("  ps                - Hybrid scheduler task table + stats\n");
         puts("  hello             - Run embedded ring-3 user demo (C)\n");
-        puts("  cnrun             - Run embedded CNAF (no args; IMAGE: C hello or Slime CNAFLOADER)\n");
-        puts("  cnrun <file>      - Run .cnaf (cwd-relative or absolute; max ~2 MiB)\n");
+        puts("  cnrun             - Run embedded ChaserOS DLL & Application General Format app\n");
+        puts("  cnrun <file>      - Run .cnpk (DAGF app; cwd-relative or absolute; max ~2 MiB)\n");
+        puts("  spawn <file>      - Create child process entry for .cnpk and return pid\n");
+        puts("  wait [pid]        - Wait/reap exited child (0=any)\n");
         puts("  slime             - Run embedded Slime user demo (requires CHASEROS_WITH_SLIME_USER)\n");
         puts("  systeminfo        - OS / RAM / display / font / IDE / CD-ROM\n");
         puts("  resolution [help|auto|scale N] - 帧缓冲下调整字模档位；像素模式改 grub.cfg\n");
@@ -698,6 +702,67 @@ void shell_execute(const char *cmd) {
             return;
         }
         user_run_cnaf_from_path_streaming(cresolved);
+    } else if (strcmp(verb, "spawn") == 0) {
+        skip_sp(&p);
+        if (*p == '\0') {
+            puts("spawn: usage spawn <file>\n");
+            return;
+        }
+        if (!vfs_is_mounted()) {
+            puts("spawn: VFS not mounted (try: mount)\n");
+            return;
+        }
+        char name[128];
+        int ni = 0;
+        while (*p && *p != ' ' && ni < 127) {
+            name[ni++] = *p++;
+        }
+        name[ni] = '\0';
+        char resolved[256];
+        if (shell_resolve(name, resolved, sizeof resolved) != 0) {
+            puts("spawn: invalid path\n");
+            return;
+        }
+        proc_t *child = process_alloc_user(0);
+        uint64_t entry = 0;
+        if (!child) {
+            puts("spawn: no free process slot\n");
+            return;
+        }
+        if (cndyn_load_package_for_exec(resolved, &entry) != 0) {
+            child->state = PROC_STATE_FREE;
+            puts("spawn: load failed\n");
+            return;
+        }
+        child->user_entry = entry;
+        child->user_stack_top = 0x801008ull;
+        process_mark_exit(child, 0);
+        puts("spawn: pid=");
+        puts_dec(child->pid);
+        puts(" (queued metadata; full run path pending)\n");
+    } else if (strcmp(verb, "wait") == 0) {
+        skip_sp(&p);
+        uint64_t pid = 0;
+        if (*p != '\0' && parse_u64(p, &pid) != 0) {
+            puts("wait: usage wait [pid]\n");
+            return;
+        }
+        uint64_t got_pid = 0;
+        int status = 0;
+        proc_t *parent = process_find_by_pid(0);
+        if (!parent) {
+            puts("wait: no parent proc\n");
+            return;
+        }
+        if (process_reap_child(parent, pid, &got_pid, &status) != 0) {
+            puts("wait: no exited child\n");
+            return;
+        }
+        puts("wait: reaped pid=");
+        puts_dec(got_pid);
+        puts(" status=");
+        puts_dec((uint64_t)(unsigned)status);
+        puts("\n");
     } else if (strcmp(verb, "slime") == 0) {
         user_run_embedded_slime_hello();
     } else if (strcmp(verb, "systeminfo") == 0) {

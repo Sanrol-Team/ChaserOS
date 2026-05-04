@@ -17,6 +17,11 @@
 #define CHASEROS_SYS_IPC_RECV       8
 #define CHASEROS_SYS_IPC_REPLY      9
 #define CHASEROS_SYS_IPC_CALL       10
+#define CHASEROS_SYS_SPAWN          14
+#define CHASEROS_SYS_EXEC           15
+#define CHASEROS_SYS_WAITPID        16
+#define CHASEROS_SYS__EXIT          17
+#define CHASEROS_SYS_FORK           18
 
 #define CHASEROS_MAX_IO_LEN (1024u * 1024u)
 #define CHASEROS_MAX_WRITE_LEN CHASEROS_MAX_IO_LEN
@@ -182,6 +187,50 @@ static inline void chaseros_syscall_exit(int code)
         : "a"((long)CHASEROS_SYS_EXIT), "D"((long)code)
         : "memory");
     __builtin_unreachable();
+}
+
+static inline long chaseros_syscall_spawn(const char *path)
+{
+    long ret;
+    __asm__ volatile(
+        "int $0x80"
+        : "=a"(ret)
+        : "a"((long)CHASEROS_SYS_SPAWN), "D"(path)
+        : "memory", "rcx", "r11");
+    return ret;
+}
+
+static inline long chaseros_syscall_exec(const char *path)
+{
+    long ret;
+    __asm__ volatile(
+        "int $0x80"
+        : "=a"(ret)
+        : "a"((long)CHASEROS_SYS_EXEC), "D"(path)
+        : "memory", "rcx", "r11");
+    return ret;
+}
+
+static inline long chaseros_syscall_waitpid(long pid, int *status)
+{
+    long ret;
+    __asm__ volatile(
+        "int $0x80"
+        : "=a"(ret)
+        : "a"((long)CHASEROS_SYS_WAITPID), "D"(pid), "S"(status)
+        : "memory", "rcx", "r11");
+    return ret;
+}
+
+static inline long chaseros_syscall_fork(void)
+{
+    long ret;
+    __asm__ volatile(
+        "int $0x80"
+        : "=a"(ret)
+        : "a"((long)CHASEROS_SYS_FORK)
+        : "memory", "rcx", "r11");
+    return ret;
 }
 
 #endif /* CHASEROS_USER_H */

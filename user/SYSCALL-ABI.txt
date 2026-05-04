@@ -147,6 +147,22 @@ Slime 常量模块：**integrations/slime-for-chaseros/std/chaseros/constants.sm
 
   **阶段 3**：若内核以 **CHASEROS_HYBRID_FS_VIA_IPC** 构建，**SYS_OPEN** 在用户路径上通过 **PID=3** 服务执行 **`user_fd_open_kpath`**（仍链接同一 VFS；便于后续将服务迁出 ring0）。
 
+  ----
+  **动态链接（11–13）**
+
+  * **CHASEROS_SYS_DLOPEN（11）**：**RDI** = 路径字符串（用户 VA），**RSI** = mode（预留）；成功返回句柄（>0），失败 **-1**。
+  * **CHASEROS_SYS_DLSYM（12）**：**RDI** = 句柄，**RSI** = 符号名字符串（用户 VA）；当前返回 0（占位）或 **-1**。
+  * **CHASEROS_SYS_DLCLOSE（13）**：**RDI** = 句柄；成功 0，失败 **-1**。
+
+  ----
+  **进程生命周期（14–18）**
+
+  * **CHASEROS_SYS_SPAWN（14）**：**RDI** = 路径字符串；返回子 pid 或负错误码。
+  * **CHASEROS_SYS_EXEC（15）**：**RDI** = 路径字符串；成功不切回旧映像（返回 0 并以新入口继续执行）。
+  * **CHASEROS_SYS_WAITPID（16）**：**RDI** = pid（0=任意子），**RSI** = `int* status`（可为 0）；返回回收到的 pid 或负错误码。
+  * **CHASEROS_SYS__EXIT（17）**：**RDI** = 退出码；标记当前进程退出并唤醒 wait 方。
+  * **CHASEROS_SYS_FORK（18）**：返回子 pid（父进程）或 0（子进程，后续 COW 完整化阶段）。
+
 --------------------------------------------------------------------
 4. 参考映射（便于对照）
 --------------------------------------------------------------------
